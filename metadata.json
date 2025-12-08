@@ -1,0 +1,7 @@
+{
+  "name": "Language Learner",
+  "description": "A fun, interactive application for kids to learn Nepali language, culture, and geography using AI-powered lessons and songs.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
