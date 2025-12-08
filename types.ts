@@ -1,3 +1,4 @@
+
 export type LanguageCode = 'np' | 'hi' | 'es' | 'zh';
 
 export interface LanguageConfig {
@@ -19,6 +20,7 @@ export interface UserProfile {
   name: string;
   avatar: string;
   voice: string;
+  autoPlaySound: boolean;
 }
 
 export const AVATARS = ['👦', '👧', '🦁', '🐼', '🤖', '👽', '🦄', '👩‍🚀'];
@@ -45,6 +47,7 @@ export interface SongData {
   description: string;
   descriptionNative: string;
   lyricsOriginal?: string;
+  youtubeId?: string;
 }
 
 export interface GeoItem {
@@ -64,11 +67,19 @@ export interface WordChallenge {
   scrambled: string[];
 }
 
+export interface PhraseData {
+  native: string;
+  transliteration: string;
+  english: string;
+  category: 'Greeting' | 'Food' | 'Daily';
+}
+
 export enum AppState {
   LANDING,
   HOME,
   ALPHABET,
   WORDS,
   SONGS,
-  GEO
+  GEO,
+  PHRASES
 }

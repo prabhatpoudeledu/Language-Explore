@@ -6,9 +6,10 @@ interface Props {
     language: LanguageCode;
     userProfile: UserProfile;
     showTranslation: boolean;
+    addXp: (amount: number) => void;
 }
 
-export const WordBuilder: React.FC<Props> = ({ language, userProfile, showTranslation }) => {
+export const WordBuilder: React.FC<Props> = ({ language, userProfile, showTranslation, addXp }) => {
   const [challenges, setChallenges] = useState<WordChallenge[]>([]);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [userSelection, setUserSelection] = useState<string[]>([]);
@@ -67,6 +68,7 @@ export const WordBuilder: React.FC<Props> = ({ language, userProfile, showTransl
     if (formed === current.word) {
         setIsCorrect(true);
         speakText(`Correct! ${current.word}.`, userProfile.voice);
+        addXp(10); // Award XP for word completion
     } else {
         setIsCorrect(false);
         speakText("Try again!", userProfile.voice);
@@ -83,6 +85,7 @@ export const WordBuilder: React.FC<Props> = ({ language, userProfile, showTransl
           setCurrentIdx(prev => prev + 1);
       } else {
           setShowNextBatchOption(true);
+          addXp(50); // Big bonus for finishing a batch
       }
   };
 

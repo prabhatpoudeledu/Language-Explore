@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { fetchGeographyItems, speakText } from '../services/geminiService';
 import { GeoItem, LanguageCode, LANGUAGES, UserProfile } from '../types';
@@ -6,22 +7,28 @@ interface Props {
     language: LanguageCode;
     userProfile: UserProfile;
     showTranslation: boolean;
+    addXp: (amount: number) => void;
 }
 
 const CATEGORIES = [
+    { id: 'Symbols', label: 'National Symbols', icon: '🇳🇵', color: 'bg-indigo-500' },
     { id: 'Nature', label: 'Nature & Landscape', icon: '🏔️', color: 'bg-green-500' },
     { id: 'Religion', label: 'Religion & Temples', icon: '🛕', color: 'bg-yellow-500' },
     { id: 'Culture', label: 'Culture & Festivals', icon: '🎉', color: 'bg-red-500' },
     { id: 'Regions', label: 'Cities & Regions', icon: '🏙️', color: 'bg-blue-500' }
 ];
 
-export const GeoSection: React.FC<Props> = ({ language, userProfile, showTranslation }) => {
+export const GeoSection: React.FC<Props> = ({ language, userProfile, showTranslation, addXp }) => {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [items, setItems] = useState<GeoItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   
   const country = LANGUAGES.find(l => l.code === language)?.country || 'Nepal';
+
+  // Update Symbols Icon based on language
+  const currentFlag = LANGUAGES.find(l => l.code === language)?.flag || '🏳️';
+  CATEGORIES[0].icon = currentFlag;
 
   // Reset if language changes while viewing
   useEffect(() => {
@@ -50,6 +57,13 @@ export const GeoSection: React.FC<Props> = ({ language, userProfile, showTransla
       finally { setLoadingMore(false); }
   }
 
+  const handleRead = (item: GeoItem) => {
+      // If Translation is ON, read English. If OFF (Immersion), read Native.
+      const textToRead = showTranslation ? item.descriptionEn : item.descriptionNative;
+      speakText(textToRead, userProfile.voice);
+      addXp(2);
+  };
+
   const goBack = () => {
       setSelectedCategory(null);
       setItems([]);
@@ -63,7 +77,7 @@ export const GeoSection: React.FC<Props> = ({ language, userProfile, showTransla
         
         {!selectedCategory ? (
             // Category Selection
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto w-full animate-fadeIn">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto w-full animate-fadeIn pb-20">
                 {CATEGORIES.map(cat => (
                     <button 
                         key={cat.id}
@@ -119,11 +133,11 @@ export const GeoSection: React.FC<Props> = ({ language, userProfile, showTransla
                                         )}
                                         <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-60"></div>
                                         <button 
-                                            onClick={() => speakText(item.descriptionEn, userProfile.voice)}
-                                            className="absolute bottom-3 right-3 bg-white/90 text-orange-600 p-3 rounded-full shadow-md hover:scale-110 transition z-10"
-                                            title="Read description"
+                                            onClick={(e) => { e.stopPropagation(); handleRead(item); }}
+                                            className="absolute bottom-3 right-3 bg-white/95 text-orange-600 p-3 rounded-full shadow-md hover:scale-110 transition z-10 flex items-center gap-2 border border-orange-100"
                                         >
-                                            📢
+                                            <span>📢</span>
+                                            <span className="text-xs font-bold uppercase hidden md:inline">Read</span>
                                         </button>
                                     </div>
                                     <div className="p-5 flex-1 flex flex-col">
@@ -141,37 +155,42 @@ export const GeoSection: React.FC<Props> = ({ language, userProfile, showTransla
                                             </p>
                                         </div>
                                         
-                                        <a 
-                                            href={item.mapLink}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="mt-auto block text-center bg-blue-50 text-blue-600 font-bold py-3 rounded-xl hover:bg-blue-100 transition border border-blue-100"
-                                        >
-                                            View on Map 🗺️
-                                        </a>
+                                        {item.mapLink && (
+                                            <a 
+                                                href={item.mapLink}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="mt-auto block text-center bg-blue-50 text-blue-600 font-bold py-3 rounded-xl hover:bg-blue-100 transition border border-blue-100"
+                                            >
+                                                View on Map 🗺️
+                                            </a>
+                                        )}
                                     </div>
                                 </div>
                             ))}
                         </div>
 
-                        <div className="mt-8 flex justify-center">
-                            <button 
-                                onClick={loadMore}
-                                disabled={loadingMore}
-                                className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-8 rounded-full shadow-lg disabled:opacity-50 flex items-center gap-2"
-                            >
-                                {loadingMore ? (
-                                    <>
-                                        <span className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full"></span>
-                                        Loading...
-                                    </>
-                                ) : (
-                                    <>
-                                        <span>➕</span> See More
-                                    </>
-                                )}
-                            </button>
-                        </div>
+                        {/* Hide See More for Symbols since it's a fixed set */}
+                        {selectedCategory !== 'Symbols' && (
+                            <div className="mt-8 flex justify-center">
+                                <button 
+                                    onClick={loadMore}
+                                    disabled={loadingMore}
+                                    className="bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-8 rounded-full shadow-lg disabled:opacity-50 flex items-center gap-2"
+                                >
+                                    {loadingMore ? (
+                                        <>
+                                            <span className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full"></span>
+                                            Loading...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <span>➕</span> See More
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        )}
                     </>
                 )}
             </div>

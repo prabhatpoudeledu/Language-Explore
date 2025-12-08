@@ -1,9 +1,11 @@
+
 import React, { useState } from 'react';
 import { AppState, LanguageCode, LANGUAGES, UserProfile, AVATARS, VOICES } from './types';
 import { AlphabetSection } from './components/AlphabetSection';
 import { WordBuilder } from './components/WordBuilder';
 import { SongSection } from './components/SongSection';
 import { GeoSection } from './components/GeoSection';
+import { PhrasebookSection } from './components/PhrasebookSection';
 import { initializeLanguageSession } from './services/geminiService';
 
 const App: React.FC = () => {
@@ -14,7 +16,14 @@ const App: React.FC = () => {
   const [tempName, setTempName] = useState('');
   const [tempAvatar, setTempAvatar] = useState(AVATARS[2]);
   const [tempVoice, setTempVoice] = useState(VOICES[1].id);
+  const [tempAutoPlay, setTempAutoPlay] = useState(true);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+
+  // Gamification State
+  const [xp, setXp] = useState(0);
+  const LEVEL_THRESHOLD = 100;
+  const currentLevel = Math.floor(xp / LEVEL_THRESHOLD) + 1;
+  const progressPercent = (xp % LEVEL_THRESHOLD) / LEVEL_THRESHOLD * 100;
 
   // App Settings
   const [isLoading, setIsLoading] = useState(false);
@@ -28,7 +37,8 @@ const App: React.FC = () => {
       setUserProfile({
           name: tempName,
           avatar: tempAvatar,
-          voice: tempVoice
+          voice: tempVoice,
+          autoPlaySound: tempAutoPlay
       });
       
       setIsLoading(true);
@@ -42,13 +52,21 @@ const App: React.FC = () => {
       }
   };
 
+  const addXp = (amount: number) => {
+      setXp(prev => prev + amount);
+  };
+
   const NavButton = ({ label, icon, targetState, colorClass }: { label: string, icon: string, targetState: AppState, colorClass: string }) => (
     <button
       onClick={() => setState(targetState)}
-      className={`${colorClass} w-full h-40 md:h-56 rounded-3xl shadow-lg transform transition hover:scale-105 flex flex-col items-center justify-center gap-4 text-white p-4 text-center border-4 border-white/20`}
+      className={`${colorClass} w-full h-40 md:h-52 rounded-3xl shadow-lg 
+                  transform transition-all duration-300 ease-out 
+                  hover:scale-105 hover:-translate-y-2 hover:shadow-2xl 
+                  active:scale-95 active:bg-opacity-90
+                  flex flex-col items-center justify-center gap-4 text-white p-4 text-center border-4 border-white/20`}
     >
-      <span className="text-6xl drop-shadow-md">{icon}</span>
-      <span className="text-2xl font-bold tracking-wide drop-shadow-sm">{label}</span>
+      <span className="text-6xl drop-shadow-md animate-float">{icon}</span>
+      <span className="text-xl md:text-2xl font-bold tracking-wide drop-shadow-sm leading-tight">{label}</span>
     </button>
   );
 
@@ -124,10 +142,10 @@ const App: React.FC = () => {
                         </div>
                       </div>
 
-                      {/* Step 3: Voice */}
+                      {/* Step 3: Voice & Settings */}
                       <div>
-                        <label className="block text-gray-500 font-bold mb-3 uppercase text-xs tracking-wider">3. Choose your Guide's Voice</label>
-                        <div className="grid grid-cols-2 gap-3">
+                        <label className="block text-gray-500 font-bold mb-3 uppercase text-xs tracking-wider">3. Settings</label>
+                        <div className="grid grid-cols-2 gap-3 mb-4">
                             {VOICES.map(v => (
                                 <button
                                     key={v.id}
@@ -137,6 +155,18 @@ const App: React.FC = () => {
                                     {v.label}
                                 </button>
                             ))}
+                        </div>
+                        <div className="flex items-center gap-3 bg-gray-50 p-3 rounded-xl">
+                            <input 
+                                type="checkbox" 
+                                id="autoplay" 
+                                checked={tempAutoPlay}
+                                onChange={(e) => setTempAutoPlay(e.target.checked)}
+                                className="w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500"
+                            />
+                            <label htmlFor="autoplay" className="text-gray-700 font-bold cursor-pointer select-none">
+                                Auto-play sounds on hover
+                            </label>
                         </div>
                       </div>
 
@@ -165,7 +195,7 @@ const App: React.FC = () => {
                  {state !== AppState.HOME && (
                      <button 
                         onClick={() => setState(AppState.HOME)}
-                        className="bg-indigo-100 hover:bg-indigo-200 text-indigo-700 p-3 rounded-xl transition shadow-sm"
+                        className="bg-indigo-100 hover:bg-indigo-200 text-indigo-700 p-3 rounded-xl transition shadow-sm active:scale-95"
                         title="Go Home"
                      >
                          🏠
@@ -180,17 +210,31 @@ const App: React.FC = () => {
             {/* Right: Controls & Profile */}
             <div className="flex items-center gap-3">
                 
+                {/* Level Progress */}
+                <div className="hidden md:flex flex-col w-32 items-end">
+                    <div className="flex justify-between w-full text-xs font-bold text-indigo-400 mb-1">
+                        <span>Lvl {currentLevel}</span>
+                        <span>{Math.floor(xp)} XP</span>
+                    </div>
+                    <div className="w-full h-2 bg-indigo-100 rounded-full overflow-hidden">
+                        <div 
+                            className="h-full bg-yellow-400 transition-all duration-1000 ease-out" 
+                            style={{ width: `${progressPercent}%` }}
+                        />
+                    </div>
+                </div>
+
                 {/* Translation Toggle */}
                 <button
                     onClick={() => setShowTranslation(!showTranslation)}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-full font-bold text-xs transition border ${showTranslation ? 'bg-green-100 text-green-700 border-green-200' : 'bg-gray-100 text-gray-500 border-gray-200'}`}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-full font-bold text-xs transition border transform active:scale-95 ${showTranslation ? 'bg-green-100 text-green-700 border-green-200' : 'bg-gray-100 text-gray-500 border-gray-200'}`}
                     title={showTranslation ? "Translation ON" : "Immersion Mode"}
                 >
                     <span>{showTranslation ? '🇬🇧 EN' : '🚫 EN'}</span>
                 </button>
 
                 {/* Profile Badge */}
-                <div className="flex items-center gap-2 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100 cursor-pointer" onClick={() => setState(AppState.LANDING)} title="Change Profile">
+                <div className="flex items-center gap-2 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100 cursor-pointer hover:bg-indigo-100 transition" onClick={() => setState(AppState.LANDING)} title="Change Profile">
                     <span className="text-xl">{userProfile?.avatar}</span>
                     <div className="flex flex-col leading-tight">
                         <span className="font-bold text-indigo-800 text-sm">{userProfile?.name}</span>
@@ -204,24 +248,26 @@ const App: React.FC = () => {
       {/* Main Content Area */}
       <main className="flex-1 max-w-6xl mx-auto w-full p-4">
         {state === AppState.HOME && (
-            <div className="flex flex-col h-full justify-center">
+            <div className="flex flex-col h-full justify-center pb-10">
                  <h2 className="text-3xl text-center font-bold text-gray-700 mb-8 animate-fadeIn">
                      Where do you want to go, {userProfile?.name}?
                  </h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 animate-popIn">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-6 animate-popIn max-w-4xl mx-auto">
                     <NavButton label="Alphabet" icon="🔤" targetState={AppState.ALPHABET} colorClass="bg-gradient-to-br from-indigo-400 to-indigo-600 hover:to-indigo-700" />
                     <NavButton label="Word Builder" icon="🧩" targetState={AppState.WORDS} colorClass="bg-gradient-to-br from-emerald-400 to-emerald-600 hover:to-emerald-700" />
-                    <NavButton label="Songs & Culture" icon="🎵" targetState={AppState.SONGS} colorClass="bg-gradient-to-br from-pink-400 to-pink-600 hover:to-pink-700" />
+                    <NavButton label="Common Phrases" icon="💬" targetState={AppState.PHRASES} colorClass="bg-gradient-to-br from-teal-400 to-teal-600 hover:to-teal-700" />
+                    {/* <NavButton label="Songs & Culture" icon="🎵" targetState={AppState.SONGS} colorClass="bg-gradient-to-br from-pink-400 to-pink-600 hover:to-pink-700" /> */}
                     <NavButton label={`Explore ${currentLangConfig.country}`} icon="🌍" targetState={AppState.GEO} colorClass="bg-gradient-to-br from-orange-400 to-orange-600 hover:to-orange-700" />
                 </div>
             </div>
         )}
 
         <div className={`h-full ${state === AppState.HOME ? 'hidden' : 'block animate-fadeIn'}`}>
-            {state === AppState.ALPHABET && <AlphabetSection language={currentLang} userProfile={userProfile!} showTranslation={showTranslation} />}
-            {state === AppState.WORDS && <WordBuilder language={currentLang} userProfile={userProfile!} showTranslation={showTranslation} />}
-            {state === AppState.SONGS && <SongSection language={currentLang} userProfile={userProfile!} showTranslation={showTranslation} />}
-            {state === AppState.GEO && <GeoSection language={currentLang} userProfile={userProfile!} showTranslation={showTranslation} />}
+            {state === AppState.ALPHABET && <AlphabetSection language={currentLang} userProfile={userProfile!} showTranslation={showTranslation} addXp={addXp} />}
+            {state === AppState.WORDS && <WordBuilder language={currentLang} userProfile={userProfile!} showTranslation={showTranslation} addXp={addXp} />}
+            {state === AppState.SONGS && <SongSection language={currentLang} userProfile={userProfile!} showTranslation={showTranslation} addXp={addXp} />}
+            {state === AppState.GEO && <GeoSection language={currentLang} userProfile={userProfile!} showTranslation={showTranslation} addXp={addXp} />}
+            {state === AppState.PHRASES && <PhrasebookSection language={currentLang} userProfile={userProfile!} showTranslation={showTranslation} addXp={addXp} />}
         </div>
       </main>
 
