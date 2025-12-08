@@ -17,10 +17,18 @@ export const LANGUAGES: LanguageConfig[] = [
 ];
 
 export interface UserProfile {
+  id: string; // Unique ID for keying
   name: string;
   avatar: string;
   voice: string;
   autoPlaySound: boolean;
+  xp: number; // Experience points persistence
+}
+
+export interface AccountData {
+  email: string;
+  password?: string; // Simple auth check
+  profiles: UserProfile[];
 }
 
 export const AVATARS = ['👦', '👧', '🦁', '🐼', '🤖', '👽', '🦄', '👩‍🚀'];
@@ -75,7 +83,10 @@ export interface PhraseData {
 }
 
 export enum AppState {
-  LANDING,
+  LOGIN,
+  PROFILE_SELECT, // Netflix-style profile picker
+  PROFILE_CREATE, // Creating a new profile
+  PROFILE_MANAGE, // Editing a profile
   HOME,
   ALPHABET,
   WORDS,

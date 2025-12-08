@@ -150,7 +150,7 @@ export const SongSection: React.FC<Props> = ({ language, userProfile, showTransl
                                     </div>
                                     
                                     <p className={`mt-4 text-gray-500 text-xs transition-all ${showTranslation ? '' : 'blur-sm hover:blur-0'}`}>
-                                        {song.descriptionEn}
+                                        {song.description}
                                     </p>
                                 </div>
                             </div>

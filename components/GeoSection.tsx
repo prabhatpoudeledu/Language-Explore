@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect } from 'react';
-import { fetchGeographyItems, speakText } from '../services/geminiService';
+import React, { useState, useEffect, useRef } from 'react';
+import { fetchGeographyItems, speakText, isGeoCategoryCached } from '../services/geminiService';
 import { GeoItem, LanguageCode, LANGUAGES, UserProfile } from '../types';
 
 interface Props {
@@ -24,23 +24,74 @@ export const GeoSection: React.FC<Props> = ({ language, userProfile, showTransla
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   
+  // Status of each category: pending, loading, ready
+  const [categoryStatus, setCategoryStatus] = useState<Record<string, 'pending' | 'loading' | 'ready'>>({});
+  
   const country = LANGUAGES.find(l => l.code === language)?.country || 'Nepal';
 
   // Update Symbols Icon based on language
   const currentFlag = LANGUAGES.find(l => l.code === language)?.flag || '🏳️';
   CATEGORIES[0].icon = currentFlag;
 
-  // Reset if language changes while viewing
+  // Background Loading Queue
   useEffect(() => {
-    setSelectedCategory(null);
-    setItems([]);
+    let isCancelled = false;
+
+    const processQueue = async () => {
+        // Initialize status based on cache
+        const initialStatus: Record<string, 'pending' | 'loading' | 'ready'> = {};
+        CATEGORIES.forEach(cat => {
+            if (isGeoCategoryCached(language, cat.id)) {
+                initialStatus[cat.id] = 'ready';
+            } else {
+                initialStatus[cat.id] = 'pending';
+            }
+        });
+        setCategoryStatus(initialStatus);
+
+        // Process pending categories one by one with delay
+        for (const cat of CATEGORIES) {
+            if (isCancelled) break;
+            if (initialStatus[cat.id] === 'ready') continue;
+
+            // Start loading this category
+            setCategoryStatus(prev => ({ ...prev, [cat.id]: 'loading' }));
+            
+            try {
+                // Fetch silently
+                await fetchGeographyItems(language, cat.id, 0);
+                if (!isCancelled) {
+                    setCategoryStatus(prev => ({ ...prev, [cat.id]: 'ready' }));
+                }
+            } catch (e) {
+                // If failed, revert to pending to try again later maybe, or stay pending
+                console.error(`Bg load failed for ${cat.id}`, e);
+                if (!isCancelled) {
+                    setCategoryStatus(prev => ({ ...prev, [cat.id]: 'pending' })); // Reset to allow click to retry
+                }
+            }
+
+            // Wait 5 seconds before next category to prevent 429
+            if (!isCancelled) await new Promise(r => setTimeout(r, 5000));
+        }
+    };
+
+    processQueue();
+
+    return () => {
+        isCancelled = true;
+    };
   }, [language]);
 
   const handleCategorySelect = async (catId: string) => {
+      // If still loading in background, user has to wait (or we show loading screen)
+      // If pending, force load now
+      
       setSelectedCategory(catId);
       setLoading(true);
       setItems([]);
       try {
+          // fetchGeographyItems checks cache first, so if 'ready', it's instant
           const newItems = await fetchGeographyItems(language, catId, 0);
           setItems(newItems);
       } catch(e) { console.error(e) }
@@ -58,7 +109,6 @@ export const GeoSection: React.FC<Props> = ({ language, userProfile, showTransla
   }
 
   const handleRead = (item: GeoItem) => {
-      // If Translation is ON, read English. If OFF (Immersion), read Native.
       const textToRead = showTranslation ? item.descriptionEn : item.descriptionNative;
       speakText(textToRead, userProfile.voice);
       addXp(2);
@@ -78,21 +128,46 @@ export const GeoSection: React.FC<Props> = ({ language, userProfile, showTransla
         {!selectedCategory ? (
             // Category Selection
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto w-full animate-fadeIn pb-20">
-                {CATEGORIES.map(cat => (
-                    <button 
-                        key={cat.id}
-                        onClick={() => handleCategorySelect(cat.id)}
-                        className={`${cat.color} hover:brightness-110 text-white p-8 rounded-3xl shadow-lg transform hover:-translate-y-2 transition flex items-center justify-between group`}
-                    >
-                         <div className="text-left">
-                            <h3 className="text-2xl font-bold">{cat.label}</h3>
-                            <p className="opacity-80 text-sm mt-2 font-medium group-hover:underline">
-                                Tap to explore
-                            </p>
-                        </div>
-                        <span className="text-6xl drop-shadow-md">{cat.icon}</span>
-                    </button>
-                ))}
+                {CATEGORIES.map(cat => {
+                    const status = categoryStatus[cat.id] || 'pending';
+                    const isLocked = status === 'loading';
+
+                    return (
+                        <button 
+                            key={cat.id}
+                            onClick={() => handleCategorySelect(cat.id)}
+                            disabled={isLocked}
+                            className={`
+                                relative overflow-hidden
+                                ${cat.color} text-white p-8 rounded-3xl shadow-lg 
+                                transform transition flex items-center justify-between group
+                                ${isLocked ? 'cursor-wait opacity-80' : 'hover:brightness-110 hover:-translate-y-2'}
+                            `}
+                        >
+                             <div className="text-left relative z-10">
+                                <h3 className="text-2xl font-bold">{cat.label}</h3>
+                                {isLocked ? (
+                                    <div className="flex items-center gap-2 mt-2">
+                                        <span className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin"></span>
+                                        <p className="text-sm font-medium">Preparing...</p>
+                                    </div>
+                                ) : (
+                                    <p className="opacity-80 text-sm mt-2 font-medium group-hover:underline">
+                                        Tap to explore
+                                    </p>
+                                )}
+                            </div>
+                            <span className="text-6xl drop-shadow-md relative z-10">{cat.icon}</span>
+
+                            {/* Progress bar overlay if loading */}
+                            {isLocked && (
+                                <div className="absolute bottom-0 left-0 h-1 bg-white/30 w-full">
+                                    <div className="h-full bg-white animate-pulse w-full origin-left transform scale-x-50"></div>
+                                </div>
+                            )}
+                        </button>
+                    )
+                })}
             </div>
         ) : (
             // Detail List View
@@ -170,7 +245,6 @@ export const GeoSection: React.FC<Props> = ({ language, userProfile, showTransla
                             ))}
                         </div>
 
-                        {/* Hide See More for Symbols since it's a fixed set */}
                         {selectedCategory !== 'Symbols' && (
                             <div className="mt-8 flex justify-center">
                                 <button 

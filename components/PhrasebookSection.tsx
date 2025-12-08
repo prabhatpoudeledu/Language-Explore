@@ -95,7 +95,7 @@ export const PhrasebookSection: React.FC<Props> = ({ language, userProfile, show
                             onChange={(e) => setTranslateInput(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleTranslate()}
                             placeholder="Type a sentence in English..."
-                            className="flex-1 rounded-xl px-4 py-3 text-gray-800 focus:outline-none focus:ring-4 focus:ring-teal-300"
+                            className="flex-1 rounded-xl px-4 py-3 bg-white text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-4 focus:ring-teal-300 font-medium shadow-inner"
                         />
                         <button 
                             onClick={handleTranslate}

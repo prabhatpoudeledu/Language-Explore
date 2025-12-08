@@ -412,6 +412,11 @@ export const translatePhrase = async (text: string, lang: LanguageCode): Promise
     }
 };
 
+export const isGeoCategoryCached = (lang: LanguageCode, category: string): boolean => {
+    const cacheKey = `${lang}-${category}`;
+    return !!geoCache[cacheKey];
+}
+
 export const fetchGeographyItems = async (lang: LanguageCode, category: string, existingCount: number = 0): Promise<GeoItem[]> => {
   const cacheKey = `${lang}-${category}`;
   if (existingCount === 0 && geoCache[cacheKey]) return geoCache[cacheKey];
