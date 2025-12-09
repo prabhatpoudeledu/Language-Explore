@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type, Modality } from "@google/genai";
-import { LetterData, SongData, GeoItem, WordChallenge, PhraseData, LanguageCode, LANGUAGES, WordOfTheDayData } from '../types';
+import { LetterData, SongData, GeoItem, WordChallenge, PhraseData, LanguageCode, LANGUAGES, WordOfTheDayData, AccountData, UserProfile } from '../types';
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
@@ -22,6 +22,90 @@ export const triggerHaptic = (pattern: number | number[] = 10) => {
         navigator.vibrate(pattern);
     }
 };
+
+// --- AUTO SYNC / CLOUD SIMULATION ---
+
+// In a real app, this would be an API call (e.g., fetch('/api/login', { method: 'POST' ... }))
+// We simulate a cloud database using a separate LocalStorage key 'cloud_db_mock' to demonstrate cross-device logic
+const MOCK_CLOUD_DELAY = 1500; // 1.5s simulated network delay
+
+export const performCloudSync = async (email: string, localAccount: AccountData | null): Promise<AccountData | null> => {
+    // Simulate network request
+    await new Promise(resolve => setTimeout(resolve, MOCK_CLOUD_DELAY));
+
+    const cloudStorage = localStorage.getItem('cloud_db_mock');
+    let cloudAccounts: AccountData[] = cloudStorage ? JSON.parse(cloudStorage) : [];
+    
+    const cloudAccount = cloudAccounts.find(a => a.email.toLowerCase() === email.toLowerCase());
+
+    if (!localAccount && !cloudAccount) return null;
+    
+    if (localAccount && !cloudAccount) {
+        // New user on cloud, push local to cloud
+        cloudAccounts.push(localAccount);
+        localStorage.setItem('cloud_db_mock', JSON.stringify(cloudAccounts));
+        return localAccount;
+    }
+
+    if (!localAccount && cloudAccount) {
+        // New device, pull from cloud
+        return cloudAccount;
+    }
+
+    if (localAccount && cloudAccount) {
+        // CONFLICT RESOLUTION / MERGE STRATEGY
+        // In this game, we assume HIGHEST XP per profile wins (to prevent overwriting progress)
+        const mergedProfiles = [...cloudAccount.profiles];
+
+        localAccount.profiles.forEach(localProfile => {
+            const cloudProfileIdx = mergedProfiles.findIndex(p => p.id === localProfile.id);
+            if (cloudProfileIdx === -1) {
+                // Profile exists locally but not on cloud -> Add to cloud
+                mergedProfiles.push(localProfile);
+            } else {
+                // Profile exists on both -> Keep the one with higher XP
+                if ((localProfile.xp || 0) > (mergedProfiles[cloudProfileIdx].xp || 0)) {
+                    mergedProfiles[cloudProfileIdx] = localProfile;
+                }
+            }
+        });
+
+        const mergedAccount = { ...cloudAccount, profiles: mergedProfiles };
+        
+        // Update Cloud
+        const updatedCloudAccounts = cloudAccounts.map(a => a.email === email ? mergedAccount : a);
+        localStorage.setItem('cloud_db_mock', JSON.stringify(updatedCloudAccounts));
+        
+        return mergedAccount;
+    }
+
+    return null;
+};
+
+export const pushToCloud = async (account: AccountData): Promise<boolean> => {
+    // Fire and forget style save
+    try {
+        // Simulate network
+        await new Promise(r => setTimeout(r, 500));
+        
+        const cloudStorage = localStorage.getItem('cloud_db_mock');
+        let cloudAccounts: AccountData[] = cloudStorage ? JSON.parse(cloudStorage) : [];
+        
+        const idx = cloudAccounts.findIndex(a => a.email === account.email);
+        if (idx > -1) {
+            cloudAccounts[idx] = account;
+        } else {
+            cloudAccounts.push(account);
+        }
+        
+        localStorage.setItem('cloud_db_mock', JSON.stringify(cloudAccounts));
+        return true;
+    } catch (e) {
+        console.error("Cloud push failed", e);
+        return false;
+    }
+};
+
 
 // --- Local Storage Helpers with Quota Management ---
 

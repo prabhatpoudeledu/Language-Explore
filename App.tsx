@@ -6,7 +6,7 @@ import { WordBuilder } from './components/WordBuilder';
 import { SongSection } from './components/SongSection';
 import { GeoSection } from './components/GeoSection';
 import { PhrasebookSection } from './components/PhrasebookSection';
-import { initializeLanguageSession, fetchWordOfTheDay, speakText, triggerHaptic } from './services/geminiService';
+import { initializeLanguageSession, fetchWordOfTheDay, speakText, triggerHaptic, performCloudSync, pushToCloud } from './services/geminiService';
 
 const App: React.FC = () => {
   const [state, setState] = useState<AppState>(AppState.LOGIN);
@@ -21,6 +21,8 @@ const App: React.FC = () => {
   const [authEmail, setAuthEmail] = useState('');
   const [authPwd, setAuthPwd] = useState('');
   const [authError, setAuthError] = useState('');
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<'saved' | 'saving' | 'error'>('saved');
 
   // Profile Form State
   const [tempName, setTempName] = useState('');
@@ -72,14 +74,37 @@ const App: React.FC = () => {
 
   // --- ACTIONS ---
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
       e.preventDefault();
       triggerHaptic(5);
       setAuthError('');
       
       const db = getDb();
-      const found = db.find(a => a.email.toLowerCase() === authEmail.toLowerCase() && a.password === authPwd);
+      // 1. Check Local DB first
+      let found = db.find(a => a.email.toLowerCase() === authEmail.toLowerCase() && a.password === authPwd);
       
+      // 2. Auto-Sync from Cloud (Mock)
+      setIsSyncing(true);
+      try {
+          const syncedAccount = await performCloudSync(authEmail, found || null);
+          if (syncedAccount) {
+              if (syncedAccount.password === authPwd) {
+                 found = syncedAccount;
+                 // Update local DB with merged cloud data
+                 const idx = db.findIndex(a => a.email === found?.email);
+                 if (idx > -1) db[idx] = found; else db.push(found);
+                 saveDb(db);
+              } else if (!found) {
+                 // Account exists on cloud but password wrong
+                 setAuthError('Invalid password for cloud account.');
+                 triggerHaptic([50, 50, 50]);
+                 setIsSyncing(false);
+                 return;
+              }
+          }
+      } catch(e) { console.warn("Sync failed", e); }
+      setIsSyncing(false);
+
       if (found) {
           setAccount(found);
           setState(AppState.PROFILE_SELECT);
@@ -116,6 +141,10 @@ const App: React.FC = () => {
       const newDb = [...db, newAccount];
       saveDb(newDb);
       setAccount(newAccount);
+      
+      // Auto-push to cloud
+      pushToCloud(newAccount);
+
       setState(AppState.PROFILE_CREATE); // Go strictly to create profile
   };
 
@@ -195,6 +224,10 @@ const App: React.FC = () => {
       saveDb(db);
       setAccount(db[accountIdx]); 
       
+      // Background Sync
+      setSyncStatus('saving');
+      pushToCloud(db[accountIdx]).then(() => setSyncStatus('saved'));
+
       await handleProfileSelect(updatedProfile);
   };
 
@@ -221,6 +254,10 @@ const App: React.FC = () => {
               db[accIdx].profiles[pIdx] = updatedProfile;
               saveDb(db);
               setAccount(db[accIdx]); 
+              
+              // Background Sync
+              setSyncStatus('saving');
+              pushToCloud(db[accIdx]).then(() => setSyncStatus('saved'));
           }
       }
   };
@@ -246,10 +283,10 @@ const App: React.FC = () => {
           <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-pink-50 flex flex-col items-center justify-center p-8 text-center font-sans">
               <div className="text-9xl mb-8 animate-bounce">{currentLangConfig.flag}</div>
               <h2 className={`text-3xl md:text-5xl font-bold ${theme.headerText} mb-4 animate-pulse`}>
-                  Preparing your Adventure...
+                  Preparing your {currentLangConfig.name} Adventure...
               </h2>
               <p className="text-xl text-gray-500 mb-8 max-w-md">
-                  We are packing your bags with <span className="font-bold">{currentLangConfig.name}</span> words, songs, and maps!
+                  We are packing your bags with words, songs, and maps!
               </p>
               <div className="w-64 h-4 bg-gray-200 rounded-full overflow-hidden">
                   <div className={`h-full bg-gradient-to-r ${theme.gradient} animate-[width_2s_ease-in-out_infinite]`} style={{ width: '50%' }}></div>
@@ -262,13 +299,13 @@ const App: React.FC = () => {
   if (state === AppState.LOGIN) {
       return (
           <div className="min-h-screen flex items-center justify-center p-4">
-              <div className="bg-white p-10 rounded-[2rem] shadow-2xl max-w-md w-full border border-gray-100 transition-all">
+              <div className="bg-white p-10 rounded-[2rem] shadow-2xl max-w-md w-full border border-gray-100 transition-all relative">
                   <div className="text-center mb-8">
                       <h1 className="text-4xl font-bold text-indigo-600 mb-2">
                           {isSignup ? "Start Journey! 🚀" : "Welcome Back! 👋"}
                       </h1>
                       <p className="text-gray-400">
-                          {isSignup ? "Create an account to track progress" : "Log in to continue learning"}
+                          {isSignup ? "Create an account to track progress" : "Log in to sync your progress"}
                       </p>
                   </div>
                   
@@ -298,13 +335,19 @@ const App: React.FC = () => {
                       
                       <button 
                         type="submit"
-                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl shadow-lg transform active:scale-95 transition text-lg"
+                        disabled={isSyncing}
+                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl shadow-lg transform active:scale-95 transition text-lg flex items-center justify-center gap-2"
                       >
-                          {isSignup ? "Sign Up" : "Log In"}
+                          {isSyncing ? (
+                             <>
+                                <span className="animate-spin h-5 w-5 border-2 border-white/50 border-t-white rounded-full"></span>
+                                Syncing...
+                             </>
+                          ) : (isSignup ? "Sign Up" : "Log In")}
                       </button>
                   </form>
                   
-                  <div className="mt-8 text-center">
+                  <div className="mt-8 text-center flex flex-col gap-4">
                       <button 
                         onClick={() => { triggerHaptic(5); setIsSignup(!isSignup); setAuthError(''); }}
                         className="text-indigo-500 font-bold hover:text-indigo-700 hover:underline transition"
@@ -326,7 +369,7 @@ const App: React.FC = () => {
   // PROFILE SELECT SCREEN
   if (state === AppState.PROFILE_SELECT) {
       return (
-          <div className="min-h-screen flex flex-col items-center justify-center p-8 bg-indigo-50/50">
+          <div className="min-h-screen flex flex-col items-center justify-center p-8 bg-indigo-50/50 relative">
                <h1 className="text-4xl md:text-5xl font-bold text-indigo-800 mb-12 animate-fadeIn">Who is learning today?</h1>
                
                <div className="flex flex-wrap justify-center gap-8 animate-popIn">
@@ -357,9 +400,11 @@ const App: React.FC = () => {
                    </button>
                </div>
                
-               <button onClick={handleLogout} className="mt-16 text-gray-400 hover:text-red-500 font-bold">
-                   Log Out
-               </button>
+               <div className="mt-16 flex flex-col items-center gap-4">
+                    <button onClick={handleLogout} className="text-gray-400 hover:text-red-500 font-bold">
+                        Log Out
+                    </button>
+               </div>
           </div>
       )
   }
@@ -381,7 +426,7 @@ const App: React.FC = () => {
                             placeholder="Child's Name" 
                             value={tempName}
                             onChange={(e) => setTempName(e.target.value)}
-                            className="w-full px-4 py-3 rounded-xl bg-white border-2 border-gray-200 text-lg focus:border-indigo-500 focus:outline-none focus:ring-4 focus:ring-indigo-100"
+                            className="w-full px-4 py-3 rounded-xl bg-white border-2 border-gray-200 text-lg focus:border-indigo-500 focus:outline-none focus:ring-4 focus:ring-indigo-100 text-gray-900"
                         />
                       </div>
                       <div>
@@ -502,7 +547,11 @@ const App: React.FC = () => {
                 {/* Level Progress */}
                 <div className="hidden md:flex flex-col w-32 items-end">
                     <div className={`flex justify-between w-full text-xs font-bold ${theme.headerText} mb-1 opacity-70`}>
-                        <span>Lvl {currentLevel}</span>
+                        <div className="flex items-center gap-1">
+                             <span>Lvl {currentLevel}</span>
+                             {syncStatus === 'saving' && <span className="animate-pulse">☁️</span>}
+                             {syncStatus === 'saved' && <span>☁️✓</span>}
+                        </div>
                         <span>{Math.floor(xp)} XP</span>
                     </div>
                     <div className="w-full h-2 bg-white/50 rounded-full overflow-hidden">
