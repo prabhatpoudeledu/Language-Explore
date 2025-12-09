@@ -1,19 +1,107 @@
 
 export type LanguageCode = 'np' | 'hi' | 'es' | 'zh';
 
+export interface LanguageTheme {
+  headerBg: string;
+  headerBorder: string;
+  headerText: string;
+  accentColor: string;
+  gradient: string;
+}
+
+export interface NativeIcons {
+  alphabet: string;
+  words: string;
+  phrases: string;
+}
+
 export interface LanguageConfig {
   code: LanguageCode;
   name: string;
   country: string; // For geography context
   flag: string;
   greeting: string;
+  theme: LanguageTheme;
+  icons: NativeIcons;
 }
 
 export const LANGUAGES: LanguageConfig[] = [
-  { code: 'np', name: 'Nepali', country: 'Nepal', flag: '🇳🇵', greeting: 'Namaste' },
-  { code: 'hi', name: 'Hindi', country: 'India', flag: '🇮🇳', greeting: 'Namaste' },
-  { code: 'es', name: 'Spanish', country: 'Spain', flag: '🇪🇸', greeting: 'Hola' },
-  { code: 'zh', name: 'Chinese', country: 'China', flag: '🇨🇳', greeting: 'Ni Hao' }
+  { 
+    code: 'np', 
+    name: 'Nepali', 
+    country: 'Nepal', 
+    flag: '🇳🇵', 
+    greeting: 'Namaste',
+    theme: {
+      headerBg: 'bg-red-50',
+      headerBorder: 'border-blue-200',
+      headerText: 'text-red-700',
+      accentColor: 'red',
+      gradient: 'from-red-500 to-blue-600'
+    },
+    icons: {
+      alphabet: 'अ',
+      words: 'शब्द',
+      phrases: 'नमस्ते'
+    }
+  },
+  { 
+    code: 'hi', 
+    name: 'Hindi', 
+    country: 'India', 
+    flag: '🇮🇳', 
+    greeting: 'Namaste',
+    theme: {
+      headerBg: 'bg-orange-50',
+      headerBorder: 'border-green-200',
+      headerText: 'text-orange-700',
+      accentColor: 'orange',
+      gradient: 'from-orange-500 to-green-600'
+    },
+    icons: {
+      alphabet: 'अ',
+      words: 'शब्द',
+      phrases: 'नमस्ते'
+    }
+  },
+  { 
+    code: 'es', 
+    name: 'Spanish', 
+    country: 'Spain', 
+    flag: '🇪🇸', 
+    greeting: 'Hola',
+    theme: {
+      headerBg: 'bg-yellow-50',
+      headerBorder: 'border-red-200',
+      headerText: 'text-red-700',
+      accentColor: 'red',
+      gradient: 'from-red-500 to-yellow-500'
+    },
+    icons: {
+      alphabet: 'Ñ',
+      words: 'Hola',
+      phrases: 'Si'
+    }
+  },
+  { 
+    code: 'zh', 
+    name: 'Chinese', 
+    country: 'China', 
+    flag: '🇨🇳', 
+    greeting: 'Ni Hao',
+    theme: {
+      headerBg: 'bg-red-50',
+      headerBorder: 'border-yellow-200',
+      headerText: 'text-red-800',
+      accentColor: 'red',
+      gradient: 'from-red-600 to-yellow-500'
+    },
+    icons: {
+      alphabet: '文',
+      words: '词',
+      phrases: '你好'
+    }
+  }
 ];
 
 export interface UserProfile {
@@ -80,6 +168,14 @@ export interface PhraseData {
   transliteration: string;
   english: string;
   category: 'Greeting' | 'Food' | 'Daily';
+}
+
+export interface WordOfTheDayData {
+    word: string;
+    transliteration: string;
+    english: string;
+    sentence: string;
+    date: string; // ISO date string YYYY-MM-DD
 }
 
 export enum AppState {

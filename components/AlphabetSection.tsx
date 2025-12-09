@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { fetchAlphabet, speakText, validateHandwriting } from '../services/geminiService';
+import { fetchAlphabet, speakText, validateHandwriting, triggerHaptic } from '../services/geminiService';
 import { LetterData, LanguageCode, UserProfile } from '../types';
 
 interface Props {
@@ -102,6 +102,7 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
 
   // --- Game Logic ---
   const startGame = () => {
+      triggerHaptic(5);
       setGameMode(true);
       pickRandomTarget();
   };
@@ -117,6 +118,7 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
 
   const checkDrawing = async () => {
       if(!canvasRef.current || !gameTarget) return;
+      triggerHaptic(5);
       
       setIsChecking(true);
       const base64 = canvasRef.current.toDataURL('image/png').split(',')[1]; // Remove prefix
@@ -125,16 +127,19 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
       
       setIsChecking(false);
       if (isMatch) {
+          triggerHaptic([10, 50, 10]);
           setCheckResult('correct');
           speakText("Excellent! That looks correct.", userProfile.voice);
           addXp(20);
       } else {
+          triggerHaptic(50);
           setCheckResult('incorrect');
           speakText("Not quite. Try again!", userProfile.voice);
       }
   };
 
   const exitGame = () => {
+      triggerHaptic(5);
       setGameMode(false);
       setGameTarget(null);
       setCheckResult(null);
@@ -143,6 +148,7 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
   // --- Interaction Logic ---
   const handleSelect = (l: LetterData) => {
     if (readingMode) return;
+    triggerHaptic(5);
     setSelectedLetter(l);
     setTimeout(clearCanvas, 50);
     speakText(l.char, userProfile.voice);
@@ -152,11 +158,13 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
   const handleHover = (l: LetterData) => {
       if (userProfile.autoPlaySound && !readingMode && !selectedLetter && !gameMode) {
           speakText(l.char, userProfile.voice);
+          triggerHaptic(2);
       }
   }
 
   const startReadingSequence = async (type: 'Vowel' | 'Consonant') => {
       if (readingMode) return;
+      triggerHaptic(5);
       setReadingMode(type);
       stopReadingRef.current = false;
       
@@ -177,6 +185,7 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
   };
 
   const stopReading = () => {
+      triggerHaptic(5);
       stopReadingRef.current = true;
       setReadingMode(null);
       setHighlightedChar(null);
@@ -221,7 +230,7 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
 
                   <div className="flex flex-col gap-3 mt-6">
                        <div className="flex justify-center gap-4">
-                           <button onClick={clearCanvas} className="px-6 py-2 bg-gray-200 text-gray-600 font-bold rounded-full hover:bg-gray-300">
+                           <button onClick={() => { triggerHaptic(2); clearCanvas(); }} className="px-6 py-2 bg-gray-200 text-gray-600 font-bold rounded-full hover:bg-gray-300">
                                Clear
                            </button>
                            {checkResult === 'correct' ? (
@@ -256,7 +265,7 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
     return (
         <div className="flex flex-col items-center p-2 animate-fadeIn pb-20">
             <button 
-                onClick={() => setSelectedLetter(null)}
+                onClick={() => { triggerHaptic(5); setSelectedLetter(null); }}
                 className="self-start mb-4 px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-full font-bold text-gray-700"
             >
                 ← Back
@@ -272,7 +281,7 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
                     <div className="text-2xl font-bold text-gray-700 mb-2">{selectedLetter.transliteration}</div>
                     
                     <button 
-                        onClick={() => speakText(selectedLetter.char, userProfile.voice)}
+                        onClick={() => { triggerHaptic(5); speakText(selectedLetter.char, userProfile.voice); }}
                         className="mb-6 bg-indigo-100 text-indigo-700 px-6 py-2 rounded-full font-bold hover:bg-indigo-200 shadow-sm"
                     >
                         🔊 Listen
@@ -290,7 +299,7 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
                             </span>
                         </p>
                         <button 
-                            onClick={() => speakText(selectedLetter.exampleWord, userProfile.voice)}
+                            onClick={() => { triggerHaptic(5); speakText(selectedLetter.exampleWord, userProfile.voice); }}
                             className="mt-3 bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-full shadow-md transition text-sm font-bold"
                         >
                             🔊 Listen to Word
@@ -324,7 +333,7 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
                         />
                     </div>
                     <button 
-                        onClick={() => { clearCanvas(); addXp(2); }}
+                        onClick={() => { triggerHaptic(2); clearCanvas(); addXp(2); }}
                         className="mt-4 px-6 py-2 bg-red-100 text-red-600 font-bold rounded-full hover:bg-red-200 transition"
                     >
                         Clear Canvas
