@@ -1,343 +1,220 @@
 
 import { GoogleGenAI, Type, Modality } from "@google/genai";
-import { LetterData, SongData, GeoItem, WordChallenge, PhraseData, LanguageCode, LANGUAGES, WordOfTheDayData, AccountData, UserProfile } from '../types';
+import { LetterData, WordChallenge, PhraseData, LanguageCode, LANGUAGES, WordOfTheDayData, AccountData, UserProfile, SongData } from '../types';
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-// --- Caching Variables (Memory) ---
-const alphabetCache: Record<string, LetterData[]> = {};
-const songCache: Record<string, SongData[]> = {}; 
-const geoCache: Record<string, GeoItem[]> = {}; 
-const wordCache: Record<string, WordChallenge[]> = {}; 
-const phraseCache: Record<string, PhraseData[]> = {};
-const audioCache: Record<string, string> = {}; 
-const wotdCache: Record<string, WordOfTheDayData> = {};
-
-const getCountry = (lang: LanguageCode) => LANGUAGES.find(l => l.code === lang)?.country || 'Nepal';
-const getLangName = (lang: LanguageCode) => LANGUAGES.find(l => l.code === lang)?.name || 'Nepali';
-
-// --- Haptic Feedback Utility ---
-export const triggerHaptic = (pattern: number | number[] = 10) => {
-    if (typeof navigator !== 'undefined' && navigator.vibrate) {
-        navigator.vibrate(pattern);
-    }
-};
-
-// --- AUTO SYNC / CLOUD SIMULATION ---
-
-// In a real app, this would be an API call (e.g., fetch('/api/login', { method: 'POST' ... }))
-// We simulate a cloud database using a separate LocalStorage key 'cloud_db_mock' to demonstrate cross-device logic
-const MOCK_CLOUD_DELAY = 1500; // 1.5s simulated network delay
-
-export const performCloudSync = async (email: string, localAccount: AccountData | null): Promise<AccountData | null> => {
-    // Simulate network request
-    await new Promise(resolve => setTimeout(resolve, MOCK_CLOUD_DELAY));
-
-    const cloudStorage = localStorage.getItem('cloud_db_mock');
-    let cloudAccounts: AccountData[] = cloudStorage ? JSON.parse(cloudStorage) : [];
-    
-    const cloudAccount = cloudAccounts.find(a => a.email.toLowerCase() === email.toLowerCase());
-
-    if (!localAccount && !cloudAccount) return null;
-    
-    if (localAccount && !cloudAccount) {
-        // New user on cloud, push local to cloud
-        cloudAccounts.push(localAccount);
-        localStorage.setItem('cloud_db_mock', JSON.stringify(cloudAccounts));
-        return localAccount;
-    }
-
-    if (!localAccount && cloudAccount) {
-        // New device, pull from cloud
-        return cloudAccount;
-    }
-
-    if (localAccount && cloudAccount) {
-        // CONFLICT RESOLUTION / MERGE STRATEGY
-        // In this game, we assume HIGHEST XP per profile wins (to prevent overwriting progress)
-        const mergedProfiles = [...cloudAccount.profiles];
-
-        localAccount.profiles.forEach(localProfile => {
-            const cloudProfileIdx = mergedProfiles.findIndex(p => p.id === localProfile.id);
-            if (cloudProfileIdx === -1) {
-                // Profile exists locally but not on cloud -> Add to cloud
-                mergedProfiles.push(localProfile);
-            } else {
-                // Profile exists on both -> Keep the one with higher XP
-                if ((localProfile.xp || 0) > (mergedProfiles[cloudProfileIdx].xp || 0)) {
-                    mergedProfiles[cloudProfileIdx] = localProfile;
-                }
-            }
-        });
-
-        const mergedAccount = { ...cloudAccount, profiles: mergedProfiles };
-        
-        // Update Cloud
-        const updatedCloudAccounts = cloudAccounts.map(a => a.email === email ? mergedAccount : a);
-        localStorage.setItem('cloud_db_mock', JSON.stringify(updatedCloudAccounts));
-        
-        return mergedAccount;
-    }
-
-    return null;
-};
-
-export const pushToCloud = async (account: AccountData): Promise<boolean> => {
-    // Fire and forget style save
-    try {
-        // Simulate network
-        await new Promise(r => setTimeout(r, 500));
-        
-        const cloudStorage = localStorage.getItem('cloud_db_mock');
-        let cloudAccounts: AccountData[] = cloudStorage ? JSON.parse(cloudStorage) : [];
-        
-        const idx = cloudAccounts.findIndex(a => a.email === account.email);
-        if (idx > -1) {
-            cloudAccounts[idx] = account;
-        } else {
-            cloudAccounts.push(account);
-        }
-        
-        localStorage.setItem('cloud_db_mock', JSON.stringify(cloudAccounts));
-        return true;
-    } catch (e) {
-        console.error("Cloud push failed", e);
-        return false;
-    }
-};
-
-
-// --- Local Storage Helpers with Quota Management ---
-
-// Helper to remove items matching a condition
-const cleanStorage = (predicate: (key: string) => boolean) => {
-    try {
-        const keysToRemove: string[] = [];
-        for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key && predicate(key)) {
-                keysToRemove.push(key);
-            }
-        }
-        keysToRemove.forEach(k => localStorage.removeItem(k));
-        console.log(`Cleaned ${keysToRemove.length} items from storage.`);
-    } catch (e) {
-        console.warn("Error cleaning storage", e);
-    }
-};
-
-const saveToStorage = (key: string, data: any) => {
-    try {
-        localStorage.setItem(key, JSON.stringify(data));
-    } catch (e: any) {
-        if (e.name === 'QuotaExceededError' || e.code === 22) {
-            console.warn("LocalStorage quota exceeded. Attempting cleanup...");
-            
-            // Priority 1: Clear any cached audio (if we were saving it, though currently we keep it in memory mostly)
-            cleanStorage(k => k.startsWith('audio_'));
-
-            // Priority 2: Clear old WOTD entries
-            cleanStorage(k => k.startsWith('wotd_'));
-
-            // Priority 3: Clear Geo items (they contain heavy images)
-            cleanStorage(k => k.includes('_geo_'));
-
-            try {
-                // Try saving again after cleanup
-                localStorage.setItem(key, JSON.stringify(data));
-            } catch (e2) {
-                console.warn("Still unable to save to LocalStorage after cleanup.");
-                
-                // Priority 4: Smart Degradation for Geo Items
-                // If we are trying to save Geo items with images, strip the images and save text only.
-                if (key.includes('_geo_') && Array.isArray(data)) {
-                    console.log("Attempting to save text-only version of content...");
-                    const textOnlyData = data.map((item: any) => {
-                        const { imageBase64, ...rest } = item;
-                        return rest; // Return object without imageBase64
-                    });
-                    try {
-                        localStorage.setItem(key, JSON.stringify(textOnlyData));
-                        console.log("Saved text-only version successfully.");
-                    } catch (e3) {
-                        console.error("Critical: Cannot save even text data.", e3);
-                    }
-                }
-            }
-        } else {
-            console.warn("LocalStorage error", e);
-        }
-    }
-};
-
-const getFromStorage = <T>(key: string): T | null => {
-    try {
-        const item = localStorage.getItem(key);
-        return item ? JSON.parse(item) : null;
-    } catch (e) {
-        return null;
-    }
-};
-
-// --- Utilities ---
-const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-const extractJSON = (text: string): any => {
-    try {
-        return JSON.parse(text);
-    } catch (e) {
-        const arrayMatch = text.match(/\[[\s\S]*\]/);
-        if (arrayMatch) {
-            try { return JSON.parse(arrayMatch[0]); } catch (e2) {}
-        }
-        const objectMatch = text.match(/\{[\s\S]*\}/);
-        if (objectMatch) {
-             try { return JSON.parse(objectMatch[0]); } catch (e3) {}
-        }
-        const cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
-        try { return JSON.parse(cleaned); } catch (e4) {}
-        throw new Error("Could not extract JSON from response");
-    }
-};
-
-const generateContentWithRetry = async (params: any, retries = 3): Promise<any> => {
-    for (let i = 0; i < retries; i++) {
-        try {
-            return await ai.models.generateContent(params);
-        } catch (error: any) {
-            const isRateLimit = 
-                error?.status === 429 || 
-                error?.code === 429 || 
-                error?.status === 503 || 
-                (error?.message && error.message.includes('429')) ||
-                (error?.message && error.message.includes('quota'));
-
-            if (isRateLimit) {
-                console.warn(`API Rate Limit hit (Attempt ${i+1}/${retries}). Retrying in ${Math.pow(2, i + 1)}s...`);
-                await wait(1500 * Math.pow(2, i + 1)); 
-                continue;
-            }
-            throw error; 
-        }
-    }
-    throw new Error("Max retries exceeded for Gemini API");
-};
-
-// --- Helper for Audio Decoding ---
-const decodeAudioData = async (
-  base64String: string,
-  audioContext: AudioContext
-): Promise<AudioBuffer> => {
-  const binaryString = atob(base64String);
+// --- Audio Helpers ---
+function decode(base64: string) {
+  const binaryString = atob(base64);
   const len = binaryString.length;
   const bytes = new Uint8Array(len);
   for (let i = 0; i < len; i++) {
     bytes[i] = binaryString.charCodeAt(i);
   }
-  const pcmData = new Int16Array(bytes.buffer);
-  const channels = 1;
-  const sampleRate = 24000;
-  const buffer = audioContext.createBuffer(channels, pcmData.length, sampleRate);
-  const channelData = buffer.getChannelData(0);
-  for (let i = 0; i < pcmData.length; i++) {
-    channelData[i] = pcmData[i] / 32768.0;
+  return bytes;
+}
+
+async function decodeAudioData(
+  data: Uint8Array,
+  ctx: AudioContext,
+  sampleRate: number,
+  numChannels: number,
+): Promise<AudioBuffer> {
+  const dataInt16 = new Int16Array(data.buffer);
+  const frameCount = dataInt16.length / numChannels;
+  const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
+
+  for (let channel = 0; channel < numChannels; channel++) {
+    const channelData = buffer.getChannelData(channel);
+    for (let i = 0; i < frameCount; i++) {
+      channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
+    }
   }
   return buffer;
-};
+}
 
-export const playAudio = async (base64Audio: string): Promise<void> => {
-  return new Promise(async (resolve, reject) => {
-    try {
-      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-      const audioContext = new AudioContextClass({ sampleRate: 24000 });
-      const buffer = await decodeAudioData(base64Audio, audioContext);
-      const source = audioContext.createBufferSource();
-      source.buffer = buffer;
-      source.connect(audioContext.destination);
-      source.onended = () => {
-          resolve();
-          try { audioContext.close(); } catch(e) {}
-      };
-      source.start();
-    } catch (e) {
-      console.error("Audio playback failed", e);
-      resolve(); 
+class AudioManager {
+    private context: AudioContext | null = null;
+    private currentSource: AudioBufferSourceNode | null = null;
+
+    private getContext(): AudioContext {
+        if (!this.context) {
+            const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+            this.context = new AudioContextClass({ sampleRate: 24000 });
+        }
+        return this.context;
     }
-  });
+
+    public stop() {
+        if (this.currentSource) {
+            try { this.currentSource.stop(); this.currentSource.disconnect(); } catch (e) {}
+            this.currentSource = null;
+        }
+    }
+
+    public async play(base64Audio: string): Promise<void> {
+        this.stop(); 
+        const ctx = this.getContext();
+        try {
+            const bytes = decode(base64Audio);
+            const audioBuffer = await decodeAudioData(bytes, ctx, 24000, 1);
+            const source = ctx.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(ctx.destination);
+            this.currentSource = source;
+            return new Promise((resolve) => {
+                source.onended = () => { if (this.currentSource === source) this.currentSource = null; resolve(); };
+                source.start();
+            });
+        } catch (e) { console.error("Audio playback error", e); }
+    }
+}
+
+const audioManager = new AudioManager();
+export const stopAllAudio = () => audioManager.stop();
+
+// --- Cache Core ---
+const setStorage = (key: string, val: any) => localStorage.setItem(`explorer_v3_${key}`, JSON.stringify(val));
+const getStorage = (key: string) => {
+    const stored = localStorage.getItem(`explorer_v3_${key}`);
+    return stored ? JSON.parse(stored) : null;
 };
 
-const generateImage = async (prompt: string): Promise<string | undefined> => {
+const getLangName = (lang: LanguageCode) => LANGUAGES.find(l => l.code === lang)?.name || 'Nepali';
+
+export const triggerHaptic = (pattern: number | number[] = 10) => {
+    if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(pattern);
+};
+
+export const performCloudSync = async (email: string, localAccount: AccountData | null): Promise<AccountData | null> => {
+    const cloudStorage = localStorage.getItem('cloud_db_mock_v3');
+    let cloudAccounts: AccountData[] = cloudStorage ? JSON.parse(cloudStorage) : [];
+    const cloudAccount = cloudAccounts.find(a => a.email.toLowerCase() === email.toLowerCase());
+    
+    if (!localAccount && !cloudAccount) return null;
+    if (localAccount && !cloudAccount) {
+        cloudAccounts.push(localAccount);
+        localStorage.setItem('cloud_db_mock_v3', JSON.stringify(cloudAccounts));
+        return localAccount;
+    }
+    if (!localAccount && cloudAccount) return cloudAccount;
+    
+    if (localAccount && cloudAccount) {
+        const mergedProfiles = [...cloudAccount.profiles];
+        localAccount.profiles.forEach(localP => {
+            const idx = mergedProfiles.findIndex(p => p.id === localP.id);
+            if (idx === -1) mergedProfiles.push(localP);
+            else if (localP.xp > mergedProfiles[idx].xp) mergedProfiles[idx] = localP;
+        });
+        const mergedAccount = { ...cloudAccount, profiles: mergedProfiles };
+        localStorage.setItem('cloud_db_mock_v3', JSON.stringify(cloudAccounts.map(a => a.email === email ? mergedAccount : a)));
+        return mergedAccount;
+    }
+    return null;
+};
+
+export const pushToCloud = async (account: AccountData): Promise<boolean> => {
+    try {
+        const cloudStorage = localStorage.getItem('cloud_db_mock_v3');
+        let cloudAccounts: AccountData[] = cloudStorage ? JSON.parse(cloudStorage) : [];
+        const idx = cloudAccounts.findIndex(a => a.email === account.email);
+        if (idx > -1) cloudAccounts[idx] = account; else cloudAccounts.push(account);
+        localStorage.setItem('cloud_db_mock_v3', JSON.stringify(cloudAccounts));
+        return true;
+    } catch (e) { return false; }
+};
+
+const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+const extractJSON = (text: string): any => {
+    try { return JSON.parse(text); } catch (e) {
+        const arrayMatch = text.match(/\[[\s\S]*\]/);
+        if (arrayMatch) try { return JSON.parse(arrayMatch[0]); } catch (e2) {}
+        const objectMatch = text.match(/\{[\s\S]*\}/);
+        if (objectMatch) try { return JSON.parse(objectMatch[0]); } catch (e3) {}
+        throw new Error("JSON Extract Failed");
+    }
+};
+
+const generateContentWithRetry = async (params: any, retries = 2): Promise<any> => {
+    for (let i = 0; i < retries; i++) {
+        try { return await ai.models.generateContent(params); } catch (error: any) {
+            const isRetryable = error?.status === 429 || error?.status === 503;
+            if (isRetryable && i < retries - 1) { await wait(1000 * Math.pow(2, i)); continue; }
+            throw error;
+        }
+    }
+};
+
+export const fetchFunFact = async (lang: LanguageCode): Promise<string> => {
+    const langName = getLangName(lang);
     try {
         const response = await generateContentWithRetry({
+            model: "gemini-3-flash-preview",
+            contents: `Tell me one unique, fun, kid-friendly fact about the ${langName} language or culture in 15 words or less. Make it exciting!`
+        });
+        return response.text || "Languages are magical!";
+    } catch (e) { return "Discovery is fun!"; }
+};
+
+export const generateTravelImage = async (place: string, country: string): Promise<string | null> => {
+    const cacheKey = `img_${place}_${country}`;
+    const cached = getStorage(cacheKey);
+    if (cached) return cached;
+
+    try {
+        const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image',
-            contents: { parts: [{ text: prompt }] },
-            config: { imageConfig: { aspectRatio: "1:1" } }
-        }, 1); 
-
-        for (const part of response.candidates?.[0]?.content?.parts || []) {
-            if (part.inlineData) return part.inlineData.data;
+            contents: { parts: [{ text: `A vibrant, friendly, 3D animated style children's book illustration of ${place} in ${country}. Colorful and clean.` }] },
+            config: { imageConfig: { aspectRatio: "16:9" } }
+        });
+        for (const part of response.candidates[0].content.parts) {
+            if (part.inlineData) {
+                const data = `data:image/png;base64,${part.inlineData.data}`;
+                setStorage(cacheKey, data);
+                return data;
+            }
         }
-    } catch (e) {
-        console.warn("Image gen skipped");
-        return undefined;
-    }
-    return undefined;
+        return null;
+    } catch (e) { return null; }
 };
 
-const scrambleWord = (word: string, lang: string): string[] => {
-    let segments: string[] = [];
-    if (typeof Intl !== 'undefined' && (Intl as any).Segmenter) {
-        try {
-            const segmenter = new (Intl as any).Segmenter(lang, { granularity: 'grapheme' });
-            segments = [...segmenter.segment(word)].map((s: any) => s.segment);
-        } catch (e) { segments = word.split(''); }
-    } else { segments = word.split(''); }
-
-    for (let i = segments.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [segments[i], segments[j]] = [segments[j], segments[i]];
+export const speakText = async (text: string, voiceName: string = 'Kore'): Promise<void> => {
+  stopAllAudio();
+  const cacheKey = `audio_${text.substring(0,30)}_${voiceName}`;
+  const cached = getStorage(cacheKey);
+  if (cached) return await audioManager.play(cached);
+  
+  try {
+    const response = await generateContentWithRetry({
+      model: "gemini-2.5-flash-preview-tts",
+      contents: [{ parts: [{ text: text }] }],
+      config: {
+        responseModalities: [Modality.AUDIO],
+        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceName } } },
+      },
+    });
+    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (base64Audio) { 
+        setStorage(cacheKey, base64Audio);
+        return await audioManager.play(base64Audio); 
     }
-    return segments;
+  } catch (error) { 
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = text.match(/[\u0900-\u097F]/) ? 'hi-IN' : 'en-US';
+      window.speechSynthesis.speak(utterance);
+  }
 };
-
-// --- FALLBACKS ---
-const FALLBACK_ALPHABET: LetterData[] = [
-    { char: 'अ', type: 'Vowel', transliteration: 'a', exampleWord: 'Amala', exampleWordTransliteration: 'Amala', exampleWordEnglish: 'Gooseberry' },
-    { char: 'A', type: 'Vowel', transliteration: 'a', exampleWord: 'Apple', exampleWordTransliteration: 'Apple', exampleWordEnglish: 'Apple' },
-];
-const FALLBACK_WORDS: WordChallenge[] = [
-    { word: "नमस्ते", english: "Hello", scrambled: ["न","म","स्","ते"] },
-    { word: "Book", english: "Book", scrambled: ["B","o","o","k"] }
-];
-const FALLBACK_PHRASES: PhraseData[] = [
-    { native: "नमस्ते", transliteration: "Namaste", english: "Hello", category: "Greeting" }
-];
-
-// --- Content Generation with Persistence ---
 
 export const fetchAlphabet = async (lang: LanguageCode): Promise<LetterData[]> => {
-  const cacheKey = `cache_${lang}_alphabet`;
-  
-  if (alphabetCache[lang]) return alphabetCache[lang];
-  
-  const stored = getFromStorage<LetterData[]>(cacheKey);
-  if (stored) {
-      alphabetCache[lang] = stored;
-      return stored;
-  }
-
+  const cached = getStorage(`${lang}_alphabet`);
+  if (cached) return cached;
   const langName = getLangName(lang);
-  let promptText = `Generate a JSON list of the alphabet for the ${langName} language. For each letter, provide a simple example word for a child.`;
-  if (lang === 'np' || lang === 'hi') {
-      promptText = `Generate a COMPLETE JSON list of the ${langName} Varnamala. You MUST include ALL Vowels (Swar) and ALL Consonants (Vyanjan). Do not skip any letters. List them in traditional order.`;
-  } else if (lang === 'zh') {
-      promptText = `Generate a list of 20 basic/common Chinese characters for beginners.`;
-  }
-
   try {
       const response = await generateContentWithRetry({
-        model: "gemini-2.5-flash",
-        contents: promptText,
+        model: "gemini-3-flash-preview",
+        contents: `Generate a COMPLETE JSON list of the ${langName} Alphabet for kids. For Consonants, include a "combos" array of the primary 12 vowel combinations (e.g. Ka, Kaa, Ki, Kee in Nepali).`,
         config: {
           responseMimeType: "application/json",
           responseSchema: {
@@ -346,54 +223,67 @@ export const fetchAlphabet = async (lang: LanguageCode): Promise<LetterData[]> =
               type: Type.OBJECT,
               properties: {
                 char: { type: Type.STRING },
-                type: { type: Type.STRING, enum: ["Vowel", "Consonant", "Character"] },
+                type: { type: Type.STRING, enum: ["Vowel", "Consonant"] },
                 transliteration: { type: Type.STRING },
                 exampleWord: { type: Type.STRING },
                 exampleWordTransliteration: { type: Type.STRING },
                 exampleWordEnglish: { type: Type.STRING },
+                combos: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: { char: { type: Type.STRING }, sound: { type: Type.STRING } },
+                        required: ["char", "sound"]
+                    }
+                }
               },
               required: ["char", "type", "transliteration", "exampleWord", "exampleWordTransliteration", "exampleWordEnglish"],
             },
           },
         },
       });
-      
       const data = extractJSON(response.text || "[]");
-      if (data.length > 0) {
-          alphabetCache[lang] = data;
-          saveToStorage(cacheKey, data);
-          return data;
-      }
-      throw new Error("Empty alphabet response");
-  } catch (e) {
-      console.warn("Fetch alphabet failed, using fallback.", e);
-      alphabetCache[lang] = FALLBACK_ALPHABET;
-      return FALLBACK_ALPHABET;
-  }
+      if (data.length > 0) setStorage(`${lang}_alphabet`, data);
+      return data;
+  } catch (e) { return []; }
 };
 
-export const fetchWordBatch = async (lang: LanguageCode, count: number = 10): Promise<WordChallenge[]> => {
-    // Only persistent cache the initial batch to ensure fresh content later
-    const cacheKey = `cache_${lang}_words_initial`;
-
-    if (wordCache[lang] && count === 10) {
-        const cached = wordCache[lang];
-        delete wordCache[lang]; 
-        return cached;
-    }
-
-    if (count === 10) {
-        const stored = getFromStorage<WordChallenge[]>(cacheKey);
-        if (stored) {
-            return stored;
-        }
-    }
-
+export const fetchPhrases = async (lang: LanguageCode, forceNew: boolean = false): Promise<PhraseData[]> => {
+    const cached = getStorage(`${lang}_phrases`) || [];
+    if (cached.length > 0 && !forceNew) return cached;
     const langName = getLangName(lang);
     try {
         const response = await generateContentWithRetry({
-            model: "gemini-2.5-flash",
-            contents: `Create ${count} simple, unique, common ${langName} words for kids to learn. Return JSON with the word and its English translation.`,
+            model: "gemini-3-flash-preview",
+            contents: `Create 10 common ${langName} phrases for kids.`,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: { native: { type: Type.STRING }, transliteration: { type: Type.STRING }, english: { type: Type.STRING }, category: { type: Type.STRING, enum: ["Greeting", "Food", "Daily"] } },
+                        required: ["native", "transliteration", "english", "category"]
+                    }
+                }
+            }
+        });
+        const newData = extractJSON(response.text || "[]");
+        const merged = [...cached, ...newData];
+        const unique = Array.from(new Set(merged.map(m => m.native))).map(n => merged.find(m => m.native === n));
+        setStorage(`${lang}_phrases`, unique);
+        return unique as PhraseData[];
+    } catch (e) { return cached; }
+};
+
+export const fetchWordBatch = async (lang: LanguageCode, forceNew: boolean = false): Promise<WordChallenge[]> => {
+    const cached = getStorage(`${lang}_words`) || [];
+    if (cached.length > 0 && !forceNew) return cached;
+    const langName = getLangName(lang);
+    try {
+        const response = await generateContentWithRetry({
+            model: "gemini-3-flash-preview",
+            contents: `Create 10 simple ${langName} words for kids.`,
             config: {
                 responseMimeType: "application/json",
                 responseSchema: {
@@ -406,70 +296,50 @@ export const fetchWordBatch = async (lang: LanguageCode, count: number = 10): Pr
                 }
             }
         });
-        
         const rawData = extractJSON(response.text || "[]");
-        const processed = rawData.map((item: any) => ({
+        const newData = rawData.map((item: any) => ({
             word: item.word,
             english: item.english,
-            scrambled: scrambleWord(item.word, lang)
+            scrambled: item.word.split('').sort(() => Math.random() - 0.5)
         }));
-
-        if (count === 10 && processed.length > 0) {
-            saveToStorage(cacheKey, processed);
-        }
-
-        return processed;
-    } catch (e) {
-        return FALLBACK_WORDS;
-    }
-}
-
-export const fetchSongsByCategory = async (lang: LanguageCode, category: string): Promise<SongData[]> => {
-  const cacheKey = `cache_${lang}_songs_${category}`;
-  if (songCache[cacheKey]) return songCache[cacheKey];
-  
-  const stored = getFromStorage<SongData[]>(cacheKey);
-  if (stored) {
-      songCache[cacheKey] = stored;
-      return stored;
-  }
-
-  const langName = getLangName(lang);
-  try {
-      const response = await generateContentWithRetry({
-        model: "gemini-2.5-flash",
-        contents: `Find 3 popular ${langName} ${category} songs for kids. Use Google Search tool to find YouTube videos. Extract YouTube ID. OUTPUT JSON ARRAY.`,
-        config: { tools: [{googleSearch: {}}] },
-      });
-
-      let text = response.text || "[]";
-      const data = extractJSON(text);
-      if (Array.isArray(data) && data.length > 0) {
-          songCache[cacheKey] = data;
-          saveToStorage(cacheKey, data);
-          return data;
-      }
-      return [];
-  } catch (e) {
-      return [];
-  }
+        const merged = [...cached, ...newData];
+        const unique = Array.from(new Set(merged.map(m => m.word))).map(n => merged.find(m => m.word === n));
+        setStorage(`${lang}_words`, unique);
+        return unique as WordChallenge[];
+    } catch (e) { return cached; }
 };
 
-export const fetchPhrases = async (lang: LanguageCode): Promise<PhraseData[]> => {
-    const cacheKey = `cache_${lang}_phrases`;
-    if (phraseCache[lang]) return phraseCache[lang];
+export const fetchWordOfTheDay = async (lang: LanguageCode): Promise<WordOfTheDayData | null> => {
+    const today = new Date().toISOString().split('T')[0];
+    const cached = getStorage(`${lang}_wotd`);
+    if (cached && cached.date === today) return cached;
+    try {
+        const response = await generateContentWithRetry({
+            model: "gemini-3-flash-preview",
+            contents: `Fun Word of the Day for kids learning ${getLangName(lang)}.`,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: { word: { type: Type.STRING }, transliteration: { type: Type.STRING }, english: { type: Type.STRING }, sentence: { type: Type.STRING } },
+                    required: ["word", "transliteration", "english", "sentence"]
+                }
+            }
+        });
+        const data = { ...extractJSON(response.text || "{}"), date: today };
+        setStorage(`${lang}_wotd`, data);
+        return data;
+    } catch (e) { return cached; }
+};
 
-    const stored = getFromStorage<PhraseData[]>(cacheKey);
-    if (stored) {
-        phraseCache[lang] = stored;
-        return stored;
-    }
-
+export const fetchSongsByCategory = async (lang: LanguageCode, category: string): Promise<SongData[]> => {
+    const cached = getStorage(`${lang}_songs_${category}`);
+    if (cached) return cached;
     const langName = getLangName(lang);
     try {
         const response = await generateContentWithRetry({
-            model: "gemini-2.5-flash",
-            contents: `Create a list of 15 common ${langName} phrases for kids.`,
+            model: "gemini-3-flash-preview",
+            contents: `Generate a list of 4 ${category} songs/chants/poems in ${langName} for kids. Include YouTube IDs if known (otherwise use 'SEARCH_ONLY').`,
             config: {
                 responseMimeType: "application/json",
                 responseSchema: {
@@ -477,283 +347,79 @@ export const fetchPhrases = async (lang: LanguageCode): Promise<PhraseData[]> =>
                     items: {
                         type: Type.OBJECT,
                         properties: {
-                            native: { type: Type.STRING },
-                            transliteration: { type: Type.STRING },
-                            english: { type: Type.STRING },
-                            category: { type: Type.STRING, enum: ["Greeting", "Food", "Daily"] }
+                            title: { type: Type.STRING },
+                            titleNative: { type: Type.STRING },
+                            category: { type: Type.STRING },
+                            description: { type: Type.STRING },
+                            descriptionNative: { type: Type.STRING },
+                            lyricsOriginal: { type: Type.STRING },
+                            youtubeId: { type: Type.STRING }
                         },
-                        required: ["native", "transliteration", "english", "category"]
+                        required: ["title", "titleNative", "category", "description", "descriptionNative", "lyricsOriginal"]
                     }
                 }
             }
         });
-
         const data = extractJSON(response.text || "[]");
-        if (data.length > 0) {
-            phraseCache[lang] = data;
-            saveToStorage(cacheKey, data);
-            return data;
-        }
-        throw new Error("Empty phrases");
-    } catch (e) {
-        return FALLBACK_PHRASES;
-    }
+        if (data.length > 0) setStorage(`${lang}_songs_${category}`, data);
+        return data;
+    } catch (e) { return []; }
 };
 
-export const translatePhrase = async (text: string, lang: LanguageCode): Promise<PhraseData | null> => {
-    // Translations are on-demand, usually not cached persistently unless we build a dict
-    const langName = getLangName(lang);
+export const validateHandwriting = async (base64Image: string, char: string, lang: LanguageCode): Promise<boolean> => {
     try {
-        const response = await generateContentWithRetry({
-            model: "gemini-2.5-flash",
-            contents: `Translate English phrase "${text}" to ${langName}. Return JSON.`,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.OBJECT,
-                    properties: {
-                        native: { type: Type.STRING },
-                        transliteration: { type: Type.STRING },
-                        english: { type: Type.STRING },
-                        category: { type: Type.STRING, enum: ["Daily"] }
-                    },
-                    required: ["native", "transliteration", "english"]
-                }
-            }
-        }, 1);
-        return extractJSON(response.text || "{}");
-    } catch (e) {
-        return null;
-    }
-};
-
-export const isGeoCategoryCached = (lang: LanguageCode, category: string): boolean => {
-    const cacheKey = `cache_${lang}_geo_${category}`;
-    return !!geoCache[cacheKey] || !!localStorage.getItem(cacheKey);
-}
-
-export const fetchGeographyItems = async (lang: LanguageCode, category: string, existingCount: number = 0): Promise<GeoItem[]> => {
-  const cacheKey = `cache_${lang}_geo_${category}`;
-  
-  if (existingCount === 0) {
-      if (geoCache[cacheKey]) return geoCache[cacheKey];
-      const stored = getFromStorage<GeoItem[]>(cacheKey);
-      if (stored) {
-          geoCache[cacheKey] = stored;
-          return stored;
-      }
-  }
-
-  const country = getCountry(lang);
-  let prompt = "";
-  if (category === 'Symbols') {
-      prompt = `List the National Flag, National Bird, National Animal, and National Sport (or Flower) of ${country}. Return 4 items. Return JSON.`;
-  } else {
-      prompt = `List 3 distinct, kid-friendly famous places or facts about "${category}" in ${country}. Return JSON.`;
-  }
-
-  try {
-      const textResponse = await generateContentWithRetry({
-        model: "gemini-2.5-flash",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                id: { type: Type.STRING },
-                titleEn: { type: Type.STRING },
-                titleNative: { type: Type.STRING },
-                descriptionEn: { type: Type.STRING },
-                descriptionNative: { type: Type.STRING },
-                searchTerm: { type: Type.STRING },
-              },
-              required: ["id", "titleEn", "titleNative", "descriptionEn", "descriptionNative", "searchTerm"]
-            }
-          }
-        },
-      });
-
-      const items: GeoItem[] = extractJSON(textResponse.text || "[]");
-      const enhancedItems = [];
-      for (const item of items) {
-          const imagePrompt = category === 'Symbols' 
-            ? `A high quality, clear image of the ${item.titleEn} of ${country}, isolated.`
-            : `A photorealistic, 4k high-resolution travel photography shot of ${item.searchTerm} in ${country}.`;
-
-          const img = await generateImage(imagePrompt);
-          const mapLink = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.searchTerm + " " + country)}`;
-          
-          enhancedItems.push({
-            ...item,
-            imageBase64: img,
-            mapLink
-          });
-          await wait(500);
-      }
-
-      if (existingCount === 0 && enhancedItems.length > 0) {
-          geoCache[cacheKey] = enhancedItems;
-          saveToStorage(cacheKey, enhancedItems);
-      }
-      return enhancedItems;
-  } catch (e) {
-      return [];
-  }
-};
-
-export const fetchWordOfTheDay = async (lang: LanguageCode): Promise<WordOfTheDayData | null> => {
-    const today = new Date().toISOString().split('T')[0];
-    const cacheKey = `wotd_${lang}_${today}`;
-    
-    // Check Memory
-    if (wotdCache[cacheKey]) return wotdCache[cacheKey];
-
-    // Check Storage
-    const stored = getFromStorage<WordOfTheDayData>(cacheKey);
-    if (stored && stored.date === today) {
-        wotdCache[cacheKey] = stored;
-        return stored;
-    }
-
-    const langName = getLangName(lang);
-    try {
-        const response = await generateContentWithRetry({
-            model: "gemini-2.5-flash",
-            contents: `Generate a random, fun Word of the Day for a child learning ${langName}. Include a simple example sentence. JSON output.`,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.OBJECT,
-                    properties: {
-                        word: { type: Type.STRING },
-                        transliteration: { type: Type.STRING },
-                        english: { type: Type.STRING },
-                        sentence: { type: Type.STRING },
-                    },
-                    required: ["word", "transliteration", "english", "sentence"]
-                }
+        const response = await ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: { parts: [
+                { inlineData: { mimeType: "image/png", data: base64Image } }, 
+                { text: `The image provided is a drawing by a child. Does it clearly represent the character "${char}" in the context of the ${getLangName(lang)} script? Return JSON: {"match": true/false}` }
+            ] },
+            config: { 
+                responseMimeType: "application/json", 
+                responseSchema: { type: Type.OBJECT, properties: { match: { type: Type.BOOLEAN } }, required: ["match"] } 
             }
         });
-        
-        const data = extractJSON(response.text || "{}");
-        const wotd: WordOfTheDayData = { ...data, date: today };
-        
-        wotdCache[cacheKey] = wotd;
-        saveToStorage(cacheKey, wotd);
-        return wotd;
-    } catch (e) {
-        return null;
-    }
-};
-
-
-const speakWithBrowser = (text: string): Promise<void> => {
-    return new Promise((resolve) => {
-        if (!window.speechSynthesis) { resolve(); return; }
-        const runSpeak = () => {
-             window.speechSynthesis.cancel(); 
-            const utterance = new SpeechSynthesisUtterance(text);
-            const isDevanagari = /[\u0900-\u097F]/.test(text);
-            const isChinese = /[\u4E00-\u9FFF]/.test(text);
-            const isSpanish = /[áéíóúñ]/.test(text);
-            const voices = window.speechSynthesis.getVoices();
-            if (isDevanagari) {
-                 const hindiVoice = voices.find(v => v.lang.includes('hi') || v.lang.includes('ne') || v.lang.includes('in'));
-                 if (hindiVoice) utterance.voice = hindiVoice;
-                 utterance.lang = 'hi-IN'; 
-            } else if (isChinese) {
-                utterance.lang = 'zh-CN';
-            } else if (isSpanish) {
-                utterance.lang = 'es-ES';
-            } else {
-                utterance.lang = 'en-US';
-            }
-            utterance.rate = 0.9;
-            utterance.onend = () => resolve();
-            utterance.onerror = () => resolve();
-            window.speechSynthesis.speak(utterance);
-        };
-        if (window.speechSynthesis.getVoices().length === 0) {
-             const voiceHandler = () => {
-                 runSpeak();
-                 window.speechSynthesis.removeEventListener('voiceschanged', voiceHandler);
-             };
-             window.speechSynthesis.addEventListener('voiceschanged', voiceHandler);
-             setTimeout(runSpeak, 500);
-        } else {
-            runSpeak();
-        }
-    });
-}
-
-export const speakText = async (text: string, voiceName: string = 'Kore'): Promise<void> => {
-  const cacheKey = `audio_${text.substring(0,20)}_${voiceName}`;
-  if (audioCache[cacheKey]) return await playAudio(audioCache[cacheKey]);
-
-  try {
-    const response = await generateContentWithRetry({
-      model: "gemini-2.5-flash-preview-tts",
-      contents: [{ parts: [{ text: text }] }],
-      config: {
-        responseModalities: [Modality.AUDIO],
-        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceName } } },
-      },
-    }, 2); 
-
-    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (base64Audio) {
-      audioCache[cacheKey] = base64Audio;
-      return await playAudio(base64Audio);
-    }
-  } catch (error) {
-    await speakWithBrowser(text);
-  }
-};
-
-export const validateHandwriting = async (imageBase64: string, targetChar: string, lang: LanguageCode): Promise<boolean> => {
-    try {
-        const langName = getLangName(lang);
-        const response = await generateContentWithRetry({
-            model: "gemini-2.5-flash",
-            contents: {
-                parts: [
-                    { inlineData: { mimeType: "image/png", data: imageBase64 } },
-                    { text: `Is this a legible ${langName} character "${targetChar}"? Return JSON: { "match": boolean }` }
-                ]
-            },
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.OBJECT,
-                    properties: { match: { type: Type.BOOLEAN } },
-                    required: ["match"]
-                }
-            }
-        });
-        const result = extractJSON(response.text || "{}");
-        return result.match === true;
-    } catch (e) {
+        return !!extractJSON(response.text || "{}").match;
+    } catch (e) { 
+        console.error("Validation error", e);
         return false; 
     }
 };
 
-export const initializeLanguageSession = async (lang: LanguageCode): Promise<void> => {
-    // If we have persistent data, we don't need to force wait as much, but sequential check is good.
+export const translatePhrase = async (text: string, lang: LanguageCode): Promise<PhraseData | null> => {
     try {
-        await fetchAlphabet(lang);
-        await wait(500); 
-        await fetchWordBatch(lang);
-        if(getFromStorage(`cache_${lang}_words_initial`)) wordCache[lang] = getFromStorage(`cache_${lang}_words_initial`)!;
-        await wait(500);
-        await fetchPhrases(lang);
-        await wait(500);
-        await fetchGeographyItems(lang, 'Symbols', 0);
-        await wait(500);
-        await fetchWordOfTheDay(lang); // Fetch WOTD in background
-    } catch (e) {
-        console.warn("Init failed");
-    }
+        const response = await generateContentWithRetry({
+            model: "gemini-3-flash-preview",
+            contents: `Translate "${text}" into ${getLangName(lang)} for kids.`,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: { native: { type: Type.STRING }, transliteration: { type: Type.STRING }, english: { type: Type.STRING }, category: { type: Type.STRING } },
+                    required: ["native", "transliteration", "english", "category"]
+                }
+            }
+        });
+        return extractJSON(response.text || "{}");
+    } catch (e) { return null; }
+};
+
+export const initializeLanguageSession = async (lang: LanguageCode, onProgress: (msg: string, p: number) => void): Promise<void> => {
+    const config = LANGUAGES.find(l => l.code === lang)!;
+    
+    onProgress("Syncing Passport...", 10);
+    await wait(300);
+    
+    onProgress("Unpacking Alphabet...", 30);
+    await fetchAlphabet(lang);
+    
+    onProgress("Gathering Words...", 50);
+    await fetchWordBatch(lang);
+    
+    onProgress("Preparing Culture Hub...", 70);
+    const imagePromises = config.travelDiscoveries.map(item => generateTravelImage(item.titleEn, config.country));
+    await Promise.all(imagePromises);
+    
+    onProgress("Finalizing Adventure...", 100);
+    await wait(200);
 };
