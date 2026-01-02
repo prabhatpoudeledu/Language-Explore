@@ -178,8 +178,6 @@ const generateContentWithRetry = async (params: any, retries = 0): Promise<any> 
     } catch (error: any) {
         if (error?.status === 429 || error?.message?.includes('429')) {
             audioManager.isRateLimited = true;
-            // Notify UI via Bakery state
-            updateBakeryStatus('resting');
             setTimeout(() => { audioManager.isRateLimited = false; }, 45000);
         }
         throw error;
@@ -227,9 +225,9 @@ export const speakText = async (text: string, voiceName: string = 'Kore'): Promi
 };
 
 /**
- * BAKERY STATUS SYSTEM
+ * BAKERY STATUS SYSTEM (Silenced for better UX)
  */
-export type BakeryStatus = 'idle' | 'baking' | 'resting' | 'ready';
+export type BakeryStatus = 'idle' | 'baking' | 'ready';
 let currentBakeryStatus: BakeryStatus = 'idle';
 const bakeryListeners: ((status: BakeryStatus) => void)[] = [];
 
@@ -280,7 +278,6 @@ const processDownloadQueue = async () => {
     if (isProcessingQueue || downloadQueue.length === 0) return;
     
     if (audioManager.isRateLimited) {
-        updateBakeryStatus('resting');
         await wait(15000); 
         processDownloadQueue();
         return;
@@ -291,7 +288,6 @@ const processDownloadQueue = async () => {
     
     while (downloadQueue.length > 0) {
         if (audioManager.isRateLimited) {
-            updateBakeryStatus('resting');
             break;
         }
         const task = downloadQueue[0];
