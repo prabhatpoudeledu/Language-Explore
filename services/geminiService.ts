@@ -9,7 +9,7 @@ const getLangName = (code: LanguageCode): string => {
     return LANGUAGES.find(l => l.code === code)?.name || "the language";
 };
 
-const CACHE_VERSION = 'v13';
+const CACHE_VERSION = 'v15';
 
 class CacheManager {
     private prefix = `explorer_${CACHE_VERSION}_`;
@@ -102,15 +102,30 @@ class AudioManager {
     public isBusy = false;
     public isRateLimited = false;
 
-    private getContext(): AudioContext {
+    public getContext(): AudioContext {
         if (!this.context) {
             const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
             this.context = new AudioContextClass({ sampleRate: 24000 });
         }
-        if (this.context.state === 'suspended') {
-            this.context.resume();
-        }
         return this.context;
+    }
+
+    public async unlock(): Promise<boolean> {
+        const ctx = this.getContext();
+        try {
+            if (ctx.state === 'suspended') {
+                await ctx.resume();
+            }
+            const buffer = ctx.createBuffer(1, 1, 24000);
+            const source = ctx.createBufferSource();
+            source.buffer = buffer;
+            source.connect(ctx.destination);
+            source.start(0);
+            return true;
+        } catch (e) {
+            console.error("Audio unlock failed", e);
+            return false;
+        }
     }
 
     public stop() {
@@ -127,6 +142,10 @@ class AudioManager {
         this.stop(); 
         this.isBusy = true;
         const ctx = this.getContext();
+        if (ctx.state === 'suspended') {
+            await ctx.resume();
+        }
+
         try {
             const bytes = decode(base64Audio);
             const audioBuffer = await decodeAudioData(bytes, ctx, 24000, 1);
@@ -140,7 +159,7 @@ class AudioManager {
                     this.isBusy = false;
                     resolve(); 
                 };
-                source.start();
+                source.start(0);
             });
         } catch (e) { 
             this.isBusy = false;
@@ -153,6 +172,8 @@ const audioManager = new AudioManager();
 export const stopAllAudio = () => audioManager.stop();
 export const isAudioBusy = () => audioManager.isBusy;
 export const isVoiceLimited = () => audioManager.isRateLimited;
+export const unlockAudio = () => audioManager.unlock();
+export const getAudioState = () => audioManager.getContext().state;
 
 export const triggerHaptic = (pattern: number | number[] = 10) => {
     if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(pattern);
@@ -188,8 +209,6 @@ const browserSpeak = (text: string) => {
     if (!window.speechSynthesis) return;
     const utterance = new SpeechSynthesisUtterance(text);
     if (text.match(/[\u0900-\u097F]/)) utterance.lang = 'hi-IN';
-    else if (text.match(/[áéíóúñ]/i)) utterance.lang = 'es-ES';
-    else if (text.match(/[\u4e00-\u9fa5]/)) utterance.lang = 'zh-CN';
     else utterance.lang = 'en-US';
     utterance.rate = 0.85;
     window.speechSynthesis.speak(utterance);
@@ -198,11 +217,7 @@ const browserSpeak = (text: string) => {
 export const speakText = async (text: string, voiceName: string = 'Kore'): Promise<void> => {
   const vault = getAudioVault();
   if (vault[text] && vault[text].length > 100) return await audioManager.play(vault[text]);
-
-  if (audioManager.isRateLimited) {
-      browserSpeak(text);
-      return;
-  }
+  if (audioManager.isRateLimited) { browserSpeak(text); return; }
 
   stopAllAudio();
   try {
@@ -219,14 +234,9 @@ export const speakText = async (text: string, voiceName: string = 'Kore'): Promi
         saveToAudioVault(text, base64Audio); 
         return await audioManager.play(base64Audio); 
     }
-  } catch (error: any) { 
-      browserSpeak(text);
-  }
+  } catch (error: any) { browserSpeak(text); }
 };
 
-/**
- * BAKERY STATUS SYSTEM (Silenced for better UX)
- */
 export type BakeryStatus = 'idle' | 'baking' | 'ready';
 let currentBakeryStatus: BakeryStatus = 'idle';
 const bakeryListeners: ((status: BakeryStatus) => void)[] = [];
@@ -245,13 +255,9 @@ export const subscribeToBakery = (callback: (status: BakeryStatus) => void) => {
     };
 };
 
-/**
- * Downloads a phonic sound for a letter and stores it locally.
- */
 export const downloadLetterSound = async (letter: string, voice: string): Promise<boolean> => {
     const vault = getAudioVault();
     if (vault[letter]) return true; 
-    
     try {
         const response = await generateContentWithRetry({
           model: "gemini-2.5-flash-preview-tts",
@@ -262,45 +268,29 @@ export const downloadLetterSound = async (letter: string, voice: string): Promis
           },
         });
         const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-        if (base64Audio) { 
-            saveToAudioVault(letter, base64Audio);
-            return true;
-        }
+        if (base64Audio) { saveToAudioVault(letter, base64Audio); return true; }
     } catch (e) { return false; }
     return false;
 };
 
-// Queue for background sound downloads to prevent rate limits
 let downloadQueue: { letter: string; voice: string }[] = [];
 let isProcessingQueue = false;
 
 const processDownloadQueue = async () => {
     if (isProcessingQueue || downloadQueue.length === 0) return;
-    
-    if (audioManager.isRateLimited) {
-        await wait(15000); 
-        processDownloadQueue();
-        return;
-    }
-
+    if (audioManager.isRateLimited) { await wait(15000); processDownloadQueue(); return; }
     isProcessingQueue = true;
     updateBakeryStatus('baking');
-    
     while (downloadQueue.length > 0) {
-        if (audioManager.isRateLimited) {
-            break;
-        }
+        if (audioManager.isRateLimited) break;
         const task = downloadQueue[0];
         try {
             const success = await downloadLetterSound(task.letter, task.voice);
             if (success) downloadQueue.shift();
-            else await wait(5000); // Wait on general error
-        } catch (e) {
-            await wait(10000);
-        }
-        await wait(3500); // Safety delay between bakes
+            else await wait(5000);
+        } catch (e) { await wait(10000); }
+        await wait(3500);
     }
-    
     isProcessingQueue = false;
     if (downloadQueue.length === 0) updateBakeryStatus('ready');
 };
@@ -308,12 +298,7 @@ const processDownloadQueue = async () => {
 export const preCacheAlphabet = (lang: LanguageCode, voice: string) => {
     const alphabet = STATIC_ALPHABET[lang] || [];
     const vault = getAudioVault();
-    
-    const missing = alphabet
-        .filter(l => !vault[l.char])
-        .map(l => ({ letter: l.char, voice }));
-    
-    // Prioritize first
+    const missing = alphabet.filter(l => !vault[l.char]).map(l => ({ letter: l.char, voice }));
     downloadQueue = [...missing];
     if (!isProcessingQueue) processDownloadQueue();
 };
@@ -321,13 +306,9 @@ export const preCacheAlphabet = (lang: LanguageCode, voice: string) => {
 export const initializeLanguageSession = async (lang: LanguageCode, voice: string, onProgress: (msg: string, p: number) => void): Promise<void> => {
     onProgress("Opening the Passport...", 30);
     await wait(400);
-    
     onProgress("Setting up the Cabin...", 60);
     await wait(300);
-
-    // Hand off all sounds to background processing
     preCacheAlphabet(lang, voice);
-    
     onProgress("Ready for takeoff!", 100);
     await wait(200);
 };
@@ -336,7 +317,6 @@ export const fetchWordOfTheDay = async (lang: LanguageCode): Promise<WordOfTheDa
     const cacheKey = `${lang}_wotd`;
     const cached = appCache.get(cacheKey);
     if (cached) return cached;
-
     try {
         const response = await generateContentWithRetry({
             model: "gemini-3-flash-preview",
@@ -357,15 +337,36 @@ export const fetchWordOfTheDay = async (lang: LanguageCode): Promise<WordOfTheDa
 };
 
 export const generateTravelImage = async (title: string, country: string): Promise<string | null> => {
-    const cacheKey = `img_${title}_${country}`;
+    const cacheKey = `img_high_landscape_${title}_${country}`;
     const cached = appCache.get(cacheKey);
     if (cached) return cached;
-
     try {
         const response = await generateContentWithRetry({
             model: 'gemini-2.5-flash-image',
             contents: {
-                parts: [{ text: `A friendly 3D illustration of ${title} in ${country} for a kids app. Vibrant colors, no text.` }]
+                parts: [{ text: `A professional, breathtaking landscape photograph of ${title} in ${country}. 8k resolution, cinematic lighting, national geographic style, ultra-realistic, vibrant and crisp details.` }]
+            }
+        });
+        for (const part of response.candidates?.[0]?.content?.parts || []) {
+            if (part.inlineData) {
+                const url = `data:image/png;base64,${part.inlineData.data}`;
+                appCache.set(cacheKey, url, 604800); 
+                return url;
+            }
+        }
+        return null;
+    } catch (e) { return null; }
+};
+
+export const generateItemImage = async (itemName: string): Promise<string | null> => {
+    const cacheKey = `img_item_isolated_${itemName}`;
+    const cached = appCache.get(cacheKey);
+    if (cached) return cached;
+    try {
+        const response = await generateContentWithRetry({
+            model: 'gemini-2.5-flash-image',
+            contents: {
+                parts: [{ text: `A professional studio photograph of a single ${itemName}, centered, high resolution, realistic textures, vibrant colors, soft lighting, clean solid neutral background. No landscape, just the isolated object.` }]
             }
         });
         for (const part of response.candidates?.[0]?.content?.parts || []) {
@@ -383,7 +384,6 @@ export const fetchFunFact = async (lang: LanguageCode): Promise<string> => {
     const cacheKey = `${lang}_funfact`;
     const cached = appCache.get(cacheKey);
     if (cached) return cached;
-
     try {
         const response = await generateContentWithRetry({
             model: "gemini-3-flash-preview",

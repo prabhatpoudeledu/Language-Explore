@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { fetchWordBatch, speakText, stopAllAudio, triggerHaptic } from '../services/geminiService';
-import { LanguageCode, WordChallenge, UserProfile } from '../types';
+import { LanguageCode, WordChallenge, UserProfile, LANGUAGES } from '../types';
 
 interface Props {
     language: LanguageCode;
@@ -19,11 +19,12 @@ export const WordBuilder: React.FC<Props> = ({ language, userProfile, showTransl
   const [loading, setLoading] = useState(true);
   const [batchLoading, setBatchLoading] = useState(false);
 
+  const langConfig = LANGUAGES.find(l => l.code === language)!;
+
   const loadWords = async (forceNew: boolean = false) => {
       if (forceNew) setBatchLoading(true); else setLoading(true);
       try {
           const data = await fetchWordBatch(language, forceNew);
-          // Filter out words mastered by the current user
           const filtered = data.filter(c => !userProfile.completedWords.includes(c.word));
           
           setChallenges(filtered);
@@ -46,7 +47,6 @@ export const WordBuilder: React.FC<Props> = ({ language, userProfile, showTransl
   const handleLetterClick = (letter: string) => {
     if(isCorrect) return;
     setUserSelection([...userSelection, letter]);
-    // NO VOICE OVER ON MOVE OVER/CLICK PER REQUEST
     triggerHaptic(5);
   };
 
@@ -65,7 +65,6 @@ export const WordBuilder: React.FC<Props> = ({ language, userProfile, showTransl
     const formed = userSelection.join('');
     if (formed === current.word) {
         setIsCorrect(true);
-        // VOICE OVER ON CHECK MY SPELLING PER REQUEST
         speakText(`Correct! It's spelled ${current.word}.`, userProfile.voice);
         triggerHaptic([10, 5, 10]);
         addXp(10);
@@ -107,95 +106,96 @@ export const WordBuilder: React.FC<Props> = ({ language, userProfile, showTransl
 
   return (
     <div className="flex flex-col items-center justify-center p-4 animate-fadeIn pb-32 max-w-4xl mx-auto">
-        <div className="text-center mb-12">
-            <h2 className="text-5xl font-bold text-emerald-600 mb-3">Word Builder 🧱</h2>
-            <p className="text-xl text-gray-400 font-medium">Tap the letters in the right order!</p>
+        <div className="text-center mb-10">
+            <h2 className="text-4xl md:text-5xl font-bold text-emerald-600 mb-2 tracking-tighter">Word Builder 🧱</h2>
+            <p className="text-sm md:text-lg text-gray-400 font-medium">Spell the word to earn magic stars!</p>
         </div>
 
         <div className="w-full bg-white rounded-[60px] shadow-2xl overflow-hidden border-b-[20px] border-emerald-50 flex flex-col">
-            {/* Top Bar Progress */}
-            <div className="bg-emerald-50 p-6 flex justify-between items-center px-12">
+            <div className="bg-emerald-50 p-6 flex justify-between items-center px-8 md:px-12">
                 <div className="flex items-center gap-3">
                     <span className="text-2xl">🧩</span>
                     <span className="font-bold text-emerald-700 tracking-wider">LEVEL {userProfile.completedWords.length + 1}</span>
                 </div>
-                <div className="text-emerald-300 font-bold uppercase tracking-[0.2em] text-sm">
+                <div className="text-emerald-300 font-bold uppercase tracking-[0.2em] text-xs">
                     {currentIdx + 1} / {challenges.length}
                 </div>
             </div>
 
-            {/* Main Word Area */}
-            <div className="p-12 text-center flex-1 flex flex-col items-center justify-center">
-                <div className="mb-10 w-full">
-                    <p className={`text-gray-300 font-bold uppercase tracking-widest text-xs mb-3 ${showTranslation ? 'visible' : 'invisible'}`}>THE WORD FOR:</p>
-                    <h3 className={`text-7xl font-bold text-indigo-600 transition-all ${showTranslation ? '' : 'blur-2xl opacity-5 select-none'}`}>
+            <div className="p-8 md:p-12 text-center flex-1 flex flex-col items-center">
+                <div className="flex flex-col items-center gap-4 mb-10 w-full bg-slate-50 py-10 rounded-[40px] border-4 border-white shadow-inner">
+                    <p className={`text-gray-300 font-bold uppercase tracking-widest text-[10px] ${showTranslation ? 'visible' : 'invisible'}`}>HOW DO WE SAY...</p>
+                    <h3 className={`text-6xl md:text-7xl font-black text-indigo-600 tracking-tighter transition-all ${showTranslation ? '' : 'blur-2xl opacity-5 select-none'}`}>
                         {current.english}
                     </h3>
+                    <button 
+                        onClick={() => speakText(current.word, userProfile.voice)}
+                        className="mt-4 flex items-center gap-2 bg-white text-emerald-600 px-6 py-3 rounded-2xl font-black shadow-md border-b-4 border-emerald-50 hover:scale-105 transition-all active:translate-y-1"
+                    >
+                        🔊 Listen to Word
+                    </button>
                 </div>
                 
-                {/* Result Display Slot */}
-                <div className="flex flex-wrap justify-center gap-4 min-h-[120px] w-full bg-slate-50 p-8 rounded-[40px] border-4 border-dashed border-slate-100 shadow-inner mb-12">
+                <div className="flex flex-wrap justify-center gap-3 min-h-[100px] w-full bg-slate-50 p-6 rounded-[35px] border-4 border-dashed border-slate-100 shadow-inner mb-10">
                     {userSelection.length === 0 && (
-                        <div className="flex items-center justify-center text-slate-300 font-bold italic opacity-50">Start spelling...</div>
+                        <div className="flex items-center justify-center text-slate-300 font-bold italic opacity-50">Tap a block below to spell it...</div>
                     )}
                     {userSelection.map((char, i) => (
-                        <div key={i} className="w-20 h-20 bg-white rounded-3xl flex items-center justify-center text-5xl font-bold text-emerald-700 shadow-xl border-2 border-emerald-50 animate-popIn">
+                        <div key={i} className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center text-3xl font-black text-emerald-700 shadow-lg border-2 border-emerald-50 animate-popIn">
                             {char}
                         </div>
                     ))}
                 </div>
 
-                {/* Scrambled Letters Pool */}
-                <div className="flex flex-wrap justify-center gap-5 mb-12 max-w-2xl">
+                <div className="flex flex-wrap justify-center gap-4 mb-10 max-w-2xl">
                     {current.scrambled.map((char, i) => (
                         <button 
                             key={i}
                             onClick={() => handleLetterClick(char)}
                             disabled={isCorrect === true}
-                            className="w-20 h-20 bg-amber-400 hover:bg-amber-500 active:bg-amber-600 rounded-[30px] shadow-xl border-b-[8px] border-amber-600 text-4xl font-bold text-white transition transform hover:scale-110 active:scale-95 disabled:opacity-30 disabled:grayscale"
+                            className="w-16 h-16 bg-amber-400 hover:bg-amber-500 active:bg-amber-600 rounded-2xl shadow-xl border-b-4 border-amber-600 text-3xl font-black text-white transition transform hover:scale-110 active:scale-95 disabled:opacity-30 disabled:grayscale"
                         >
                             {char}
                         </button>
                     ))}
                 </div>
 
-                {/* Control Panel */}
-                <div className="w-full max-w-xl space-y-4">
+                <div className="w-full max-w-md space-y-4">
                      <div className="grid grid-cols-2 gap-4">
-                        <button onClick={handleReset} className="py-5 bg-gray-100 rounded-3xl font-bold text-gray-500 hover:bg-gray-200 transition-all active:scale-95">
-                            Reset Block
+                        <button onClick={handleReset} className="py-4 bg-slate-50 rounded-2xl font-black text-gray-400 hover:bg-slate-100 transition-all text-sm">
+                            Reset
                         </button>
-                        <button onClick={handleBackspace} className="py-5 bg-gray-100 rounded-3xl font-bold text-gray-500 hover:bg-gray-200 transition-all active:scale-95">
-                            Undo Last
+                        <button onClick={handleBackspace} className="py-4 bg-slate-50 rounded-2xl font-black text-gray-400 hover:bg-slate-100 transition-all text-sm">
+                            Undo
                         </button>
                      </div>
 
                     {isCorrect ? (
-                         <button onClick={nextWord} className="w-full py-8 bg-emerald-500 hover:bg-emerald-600 text-white rounded-[40px] font-bold shadow-2xl animate-bounce text-3xl transition-all active:scale-95">
-                            {batchLoading ? 'Fetching New...' : 'Amazing! Next Word →'}
+                         <button onClick={nextWord} className="w-full py-6 bg-emerald-500 hover:bg-emerald-600 text-white rounded-[30px] font-black shadow-2xl animate-bounce text-xl transition-all active:translate-y-1">
+                            {batchLoading ? 'Connecting...' : 'Next Word →'}
                         </button>
                     ) : (
                         <button 
                             onClick={checkAnswer} 
                             disabled={userSelection.length === 0}
-                            className="w-full py-8 bg-indigo-600 hover:bg-indigo-700 text-white rounded-[40px] font-bold shadow-2xl text-3xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="w-full py-6 bg-indigo-600 hover:bg-indigo-700 text-white rounded-[30px] font-black shadow-2xl text-xl transition-all active:translate-y-1 disabled:opacity-50"
                         >
-                            Check My Spelling 🔊
+                            Check Answer! ✨
                         </button>
                     )}
                 </div>
             </div>
             
-            {isCorrect === false && <p className="text-red-500 font-bold mb-10 animate-shake bg-red-50 p-5 rounded-3xl inline-block mx-auto text-xl border-2 border-red-100">Try one more time!</p>}
-            {isCorrect === true && <p className="text-emerald-500 font-bold mb-10 text-3xl animate-pulse">Correct! 🌟</p>}
+            {isCorrect === false && <p className="text-red-500 font-black mb-8 animate-shake text-center text-lg">Try one more time! 💪</p>}
+            {isCorrect === true && <p className="text-emerald-500 font-black mb-8 text-2xl animate-pulse text-center">Correct! 🌟</p>}
         </div>
         
         <button 
             onClick={() => loadWords(true)} 
             disabled={batchLoading}
-            className="mt-16 text-indigo-400 font-bold uppercase tracking-[0.3em] text-xs hover:text-indigo-600 transition flex items-center gap-3 bg-white px-8 py-3 rounded-full shadow-sm hover:shadow-md"
+            className="mt-12 text-indigo-400 font-bold uppercase tracking-[0.3em] text-[10px] hover:text-indigo-600 transition flex items-center gap-3 bg-white px-8 py-3 rounded-full shadow-sm hover:shadow-md"
         >
-            {batchLoading ? 'Connecting...' : '📥 GET MORE CHALLENGES'}
+            {batchLoading ? 'Connecting...' : '📥 Get More Challenges'}
         </button>
     </div>
   );

@@ -54,55 +54,53 @@ export const PhrasebookSection: React.FC<Props> = ({ language, userProfile, show
         }
     };
 
-    if (loading) return <div className="p-20 text-center font-bold text-teal-600 animate-pulse text-2xl">Organizing your conversation book... 💬</div>;
+    if (loading) return <div className="p-10 text-center font-bold text-teal-600 animate-pulse text-lg">Loading phrases... 💬</div>;
 
     return (
-        <div className="max-w-5xl mx-auto space-y-12 pb-32 animate-fadeIn">
+        <div className="max-w-4xl mx-auto space-y-8 pb-16 animate-fadeIn">
             <div className="text-center">
-                <h2 className="text-4xl font-bold text-teal-600 mb-2">Common Phrases</h2>
-                <p className="text-gray-400 text-lg font-medium">Learn to speak like a native explorer!</p>
+                <h2 className="text-3xl font-bold text-teal-600 mb-1">Common Phrases</h2>
+                <p className="text-gray-400 text-sm font-medium">Talk like a native explorer!</p>
             </div>
             
-            <div className="bg-teal-600 rounded-[40px] p-10 text-white shadow-2xl border-b-[12px] border-teal-800">
-                <h3 className="text-2xl font-bold mb-6 flex items-center gap-3">Instant Translator 💬 <span className="text-sm font-normal opacity-70">powered by AI</span></h3>
-                <div className="flex flex-col sm:flex-row gap-4">
+            <div className="bg-teal-600 rounded-[35px] p-6 text-white shadow-xl border-b-8 border-teal-800">
+                <h3 className="text-lg font-bold mb-4 flex items-center gap-2">Instant Translator 💬</h3>
+                <div className="flex flex-col sm:flex-row gap-3">
                     <input 
                         type="text" 
                         value={translateInput} 
                         onChange={e => setTranslateInput(e.target.value)} 
-                        placeholder="Type anything in English to translate..." 
-                        className="flex-1 p-5 rounded-2xl text-gray-800 text-lg shadow-inner outline-none focus:ring-4 focus:ring-yellow-400 transition" 
+                        placeholder="Say something in English..." 
+                        className="flex-1 p-4 bg-white border border-teal-400 rounded-2xl text-gray-800 text-base shadow-inner outline-none focus:ring-2 focus:ring-yellow-400 transition" 
                     />
-                    <button onClick={handleTranslate} disabled={isTranslating} className="bg-yellow-400 hover:bg-yellow-500 text-teal-900 px-10 py-5 rounded-2xl font-bold text-xl shadow-lg transition active:scale-95 disabled:opacity-50">
-                        {isTranslating ? '...' : 'Translate'}
+                    <button onClick={handleTranslate} disabled={isTranslating} className="bg-yellow-400 hover:bg-yellow-500 text-teal-900 px-8 py-4 rounded-2xl font-bold text-lg shadow-lg transition active:scale-95 disabled:opacity-50">
+                        {isTranslating ? '...' : 'Go!'}
                     </button>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {phrases.map((p, i) => (
-                    <div key={i} className="bg-white p-8 rounded-[35px] shadow-xl border-b-8 border-teal-50 flex justify-between items-center group hover:-translate-y-1 transition duration-300">
-                        <div>
-                            <p className="text-2xl font-bold text-gray-800 mb-1 group-hover:text-teal-600 transition">{p.native}</p>
-                            <p className="text-sm text-gray-300 font-bold uppercase tracking-widest mb-3">{p.transliteration}</p>
+                    <div key={i} className="bg-white p-6 rounded-[30px] shadow-sm border-b-4 border-teal-50 flex justify-between items-center group active:translate-y-0.5 transition duration-200">
+                        <div className="flex-1">
+                            <p className="text-xl font-bold text-gray-800 mb-0.5">{p.native}</p>
+                            <p className="text-[8px] text-gray-300 font-bold uppercase tracking-widest mb-2">{p.transliteration}</p>
                             {showTranslation && (
-                                <div className="bg-teal-50 px-3 py-1 rounded-lg inline-block">
-                                    <p className="text-teal-700 font-bold text-sm">{p.english}</p>
-                                </div>
+                                <p className="text-teal-700 font-bold text-[10px] bg-teal-50 px-2 py-0.5 rounded-lg inline-block">{p.english}</p>
                             )}
                         </div>
-                        <button onClick={() => handlePlay(p.native)} className="w-16 h-16 bg-white border-4 border-teal-50 text-teal-500 rounded-full flex items-center justify-center text-2xl shadow-md hover:scale-110 active:scale-90 transition">🔊</button>
+                        <button onClick={() => handlePlay(p.native)} className="w-12 h-12 bg-teal-50 text-teal-500 rounded-full flex items-center justify-center text-xl shadow-inner hover:scale-110 active:scale-90 transition">🔊</button>
                     </div>
                 ))}
             </div>
 
-            <div className="text-center pt-8">
+            <div className="text-center pt-4">
                 <button 
                     onClick={handleLoadMore} 
                     disabled={batchLoading}
-                    className="bg-white text-teal-600 px-12 py-5 rounded-[30px] font-bold shadow-xl border-b-4 border-gray-100 hover:bg-teal-50 transition active:scale-95 disabled:opacity-50 text-lg"
+                    className="bg-white text-teal-600 px-10 py-3 rounded-2xl font-bold shadow-md border-b-2 border-gray-100 hover:bg-teal-50 transition active:scale-95 disabled:opacity-50 text-base"
                 >
-                    {batchLoading ? 'Downloading New Set...' : '📥 Download 10 More Phrases'}
+                    {batchLoading ? 'Connecting...' : 'Download More'}
                 </button>
             </div>
         </div>
