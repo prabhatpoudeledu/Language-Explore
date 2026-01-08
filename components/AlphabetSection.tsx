@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { fetchAlphabet, speakText, triggerHaptic, stopAllAudio, getAudioVault, preCacheAlphabet } from '../services/geminiService';
+import { fetchAlphabet, speakText, triggerHaptic, stopAllAudio, getAudioVault, preCacheAlphabet, unlockAudio } from '../services/geminiService';
 import { LetterData, LanguageCode, UserProfile, LANGUAGES, ExampleWord } from '../types';
 
 interface Props {
@@ -56,6 +56,8 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
   };
 
   const handleSelect = async (l: LetterData) => {
+    // Standard awakening for mobile browsers
+    await unlockAudio();
     triggerHaptic(5);
     setLastClickedChar(l.char);
     setTimeout(() => setLastClickedChar(null), 300);
@@ -75,6 +77,7 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
   };
 
   const handleExampleClick = async (ex: ExampleWord) => {
+      await unlockAudio();
       setSelectedExample(ex);
       triggerHaptic(10);
       

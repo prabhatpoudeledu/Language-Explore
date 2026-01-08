@@ -9,7 +9,7 @@ const getLangName = (code: LanguageCode): string => {
     return LANGUAGES.find(l => l.code === code)?.name || "the language";
 };
 
-const CACHE_VERSION = 'v15';
+const CACHE_VERSION = 'v16';
 
 class CacheManager {
     private prefix = `explorer_${CACHE_VERSION}_`;
@@ -110,12 +110,17 @@ class AudioManager {
         return this.context;
     }
 
+    /**
+     * Standardised awakening for mobile devices.
+     * Must be called inside a user-gesture handler (click, touchend).
+     */
     public async unlock(): Promise<boolean> {
         const ctx = this.getContext();
         try {
             if (ctx.state === 'suspended') {
                 await ctx.resume();
             }
+            // Standard "silence" buffer to kickstart the hardware
             const buffer = ctx.createBuffer(1, 1, 24000);
             const source = ctx.createBufferSource();
             source.buffer = buffer;
@@ -130,7 +135,10 @@ class AudioManager {
 
     public stop() {
         if (this.currentSource) {
-            try { this.currentSource.stop(); this.currentSource.disconnect(); } catch (e) {}
+            try { 
+                this.currentSource.stop(); 
+                this.currentSource.disconnect(); 
+            } catch (e) {}
             this.currentSource = null;
         }
         this.isBusy = false;
@@ -142,8 +150,10 @@ class AudioManager {
         this.stop(); 
         this.isBusy = true;
         const ctx = this.getContext();
+        
+        // Critical for mobile: resume context before every attempt to play.
         if (ctx.state === 'suspended') {
-            await ctx.resume();
+            try { await ctx.resume(); } catch (e) { console.error("Context resume failed", e); }
         }
 
         try {
@@ -176,7 +186,9 @@ export const unlockAudio = () => audioManager.unlock();
 export const getAudioState = () => audioManager.getContext().state;
 
 export const triggerHaptic = (pattern: number | number[] = 10) => {
-    if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(pattern);
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        try { navigator.vibrate(pattern); } catch (e) {}
+    }
 };
 
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -215,6 +227,9 @@ const browserSpeak = (text: string) => {
 };
 
 export const speakText = async (text: string, voiceName: string = 'Kore'): Promise<void> => {
+  // Always try to wake context first
+  await audioManager.unlock();
+  
   const vault = getAudioVault();
   if (vault[text] && vault[text].length > 100) return await audioManager.play(vault[text]);
   if (audioManager.isRateLimited) { browserSpeak(text); return; }
@@ -304,7 +319,8 @@ export const preCacheAlphabet = (lang: LanguageCode, voice: string) => {
 };
 
 export const initializeLanguageSession = async (lang: LanguageCode, voice: string, onProgress: (msg: string, p: number) => void): Promise<void> => {
-    onProgress("Opening the Passport...", 30);
+    onProgress("Awakening the sounds...", 30);
+    await audioManager.unlock();
     await wait(400);
     onProgress("Setting up the Cabin...", 60);
     await wait(300);

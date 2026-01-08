@@ -174,7 +174,7 @@ const App: React.FC = () => {
         return;
     }
     
-    handleUnlockAudio();
+    await handleUnlockAudio();
     
     setIsAuthLoading(true);
     triggerHaptic(10);
@@ -211,7 +211,7 @@ const App: React.FC = () => {
 
   const handleGoogleLogin = async () => {
     setAuthError('');
-    handleUnlockAudio();
+    await handleUnlockAudio();
     
     setIsAuthLoading(true);
     setAuthStage('verifying');
@@ -248,9 +248,8 @@ const App: React.FC = () => {
   };
 
   const handleProfileSelect = async (p: UserProfile) => {
-    handleUnlockAudio();
+    await handleUnlockAudio();
     setUserProfile(p);
-    // Force Nepali directly to jump into the app fast
     setCurrentLang('np');
     setIsLoading(true);
     setLoadingP(0);
@@ -375,6 +374,7 @@ const App: React.FC = () => {
               <p className="text-lg text-gray-400 font-bold mb-8 max-w-sm">Tap the big button below to wake up the voices on your phone!</p>
               <button 
                 onClick={handleUnlockAudio}
+                onPointerUp={handleUnlockAudio}
                 className="bg-red-600 text-white px-12 py-5 rounded-[30px] font-black text-xl shadow-2xl border-b-8 border-red-800 active:translate-y-2 active:border-b-0 transition-all"
               >
                   ✨ Start Learning!
@@ -406,7 +406,6 @@ const App: React.FC = () => {
   );
 
   if (state === AppState.PROFILE_CREATE || state === AppState.PROFILE_MANAGE) {
-    // Fix: Corrected variable initialization to avoid double assignment and Temporal Dead Zone error.
     const edit = state === AppState.PROFILE_MANAGE;
     if (edit && !tempAccountName && account) {
         setTempAccountName(account.name || '');
@@ -453,8 +452,6 @@ const App: React.FC = () => {
       </div>
     );
   }
-
-  // NOTE: state === AppState.LANGUAGE_SELECT is now unreachable via normal UI flow to keep focus on Nepali Explorer.
 
   const voiceBusy = isVoiceLimited();
 
@@ -517,7 +514,7 @@ const App: React.FC = () => {
                     ].map((btn, i) => (
                         <button 
                             key={i} 
-                            onClick={() => { handleUnlockAudio(); setState(btn.s); }} 
+                            onClick={async () => { await handleUnlockAudio(); setState(btn.s); }} 
                             className={`bg-white p-4 md:p-6 shadow-sm transition border-b-4 border-${btn.c}-500 text-center flex flex-col items-center justify-center rounded-3xl active:translate-y-1 active:border-b-0 group`}
                         >
                             <div className="text-4xl md:text-5xl group-hover:scale-110 transition">{btn.i}</div>
