@@ -8,6 +8,7 @@ import { PhrasebookSection } from './components/PhrasebookSection';
 import { VoicePractice } from './components/VoicePractice';
 import { initializeLanguageSession, fetchWordOfTheDay, fetchFunFact, speakText, triggerHaptic, stopAllAudio, generateTravelImage, isVoiceLimited, subscribeToBakery, BakeryStatus, unlockAudio, getAudioState } from './services/geminiService';
 
+
 const SoundBakery: React.FC = () => {
     const [status, setStatus] = useState<BakeryStatus>('idle');
 
@@ -71,7 +72,6 @@ const LoadingGame: React.FC<{ items: string[] }> = ({ items }) => {
 
 const App: React.FC = () => {
   const [state, setState] = useState<AppState>(AppState.LOGIN);
-  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
   const [currentLang, setCurrentLang] = useState<LanguageCode>('np');
   const [account, setAccount] = useState<AccountData | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -82,25 +82,54 @@ const App: React.FC = () => {
   const [loadingMsg, setLoadingMsg] = useState('');
   const [loadingP, setLoadingP] = useState(0);
 
-  const [emailInput, setEmailInput] = useState('');
-  const [passwordInput, setPasswordInput] = useState('');
-  const [accountNameInput, setAccountNameInput] = useState('');
   const [authError, setAuthError] = useState('');
 
   const [showTranslation, setShowTranslation] = useState(true);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [wotd, setWotd] = useState<WordOfTheDayData | null>(null);
   const [wotdImage, setWotdImage] = useState<string | null>(null);
-  const [funFact, setFunFact] = useState<string>('Tap for a fun fact!');
+  const [funFact, setFunFact] = useState<string>('Tap for a cool fact!');
   const [factLoading, setFactLoading] = useState(false);
+  const [preloadedFacts, setPreloadedFacts] = useState<string[]>([]);
+  const [wotdKidsImage, setWotdKidsImage] = useState<string | null>(null);
 
   const [tempName, setTempName] = useState('');
   const [tempAccountName, setTempAccountName] = useState('');
   const [tempAvatar, setTempAvatar] = useState(AVATARS[0]);
   const [tempVoice, setTempVoice] = useState(VOICES[0].id);
   const [tempGender, setTempGender] = useState<'male' | 'female'>('male');
-  
   const [audioUnlocked, setAudioUnlocked] = useState(false);
+  const [googleCredential, setGoogleCredential] = useState<string | null>(null);
+
+  // Listen for Google Sign-In events
+  useEffect(() => {
+    const handleGoogleSignIn = (event: any) => {
+      setGoogleCredential(event.detail.credential);
+    };
+
+    window.addEventListener('googleSignIn', handleGoogleSignIn);
+    return () => window.removeEventListener('googleSignIn', handleGoogleSignIn);
+  }, []);
+
+  // Automatically process Google Sign-In when credential is received
+  useEffect(() => {
+    if (googleCredential && state === AppState.LOGIN) {
+      handleGoogleLogin();
+    }
+  }, [googleCredential, state]);
+
+  // Render Google Sign-In button when login state is active
+  useEffect(() => {
+    if (state === AppState.LOGIN) {
+      // Small delay to ensure DOM is ready
+      const timer = setTimeout(() => {
+        if ((window as any).renderGoogleSignInButton) {
+          (window as any).renderGoogleSignInButton();
+        }
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [state]);
 
   const currentLangConfig = LANGUAGES.find(l => l.code === currentLang) || LANGUAGES[0];
   const theme = currentLangConfig.theme;
@@ -141,7 +170,7 @@ const App: React.FC = () => {
     
     // Check audio state
     if (getAudioState() === 'running') setAudioUnlocked(true);
-  }, []);
+  }, []); // Only run once on mount
 
   useEffect(() => {
     if (state === AppState.HOME && userProfile) {
@@ -156,10 +185,45 @@ const App: React.FC = () => {
 
   const refreshFunFact = async () => {
       setFactLoading(true);
+
+      // Use preloaded fact if available
+      if (preloadedFacts.length > 0) {
+          const fact = preloadedFacts.shift()!;
+          setFunFact(fact);
+          setFactLoading(false);
+          // Start preloading a new fact in background
+          preloadNextFact();
+          return;
+      }
+
+      // Fallback to direct fetch
       const fact = await fetchFunFact(currentLang);
       setFunFact(fact);
       setFactLoading(false);
+      // Start preloading facts in background
+      preloadNextFact();
   };
+
+  const preloadNextFact = async () => {
+      try {
+          const fact = await fetchFunFact(currentLang);
+          setPreloadedFacts(prev => [...prev, fact]);
+      } catch (e) {
+          // Silently fail for background preloading
+      }
+  };
+
+  // Preload facts when component mounts or language changes
+  useEffect(() => {
+      if (userProfile && currentLang) {
+          // Preload 3 facts in background
+          setTimeout(() => {
+              preloadNextFact();
+              setTimeout(() => preloadNextFact(), 1000);
+              setTimeout(() => preloadNextFact(), 2000);
+          }, 2000);
+      }
+  }, [currentLang, userProfile]);
 
   const handleUnlockAudio = async () => {
       const success = await unlockAudio();
@@ -167,84 +231,60 @@ const App: React.FC = () => {
       triggerHaptic(10);
   };
 
-  const handleEmailAuth = async () => {
-    setAuthError('');
-    if (!emailInput || !passwordInput) {
-        setAuthError("Please fill in all fields.");
-        return;
-    }
-    
-    await handleUnlockAudio();
-    
-    setIsAuthLoading(true);
-    triggerHaptic(10);
-    await new Promise(r => setTimeout(r, 1000));
-    
-    const db = getDb();
-    if (authMode === 'login') {
-        const found = db.find(a => a.email.toLowerCase() === emailInput.toLowerCase() && a.password === passwordInput);
-        if (found) {
-            setAccount(found);
-            setState(AppState.PROFILE_SELECT);
-        } else {
-            setAuthError("Incorrect email or password.");
-        }
-    } else {
-        const exists = db.find(a => a.email.toLowerCase() === emailInput.toLowerCase());
-        if (exists) {
-            setAuthError("Email already in use.");
-        } else {
-            const newAcc: AccountData = {
-                email: emailInput,
-                password: passwordInput,
-                name: accountNameInput || emailInput.split('@')[0],
-                profiles: []
-            };
-            db.push(newAcc);
-            saveDb(db);
-            setAccount(newAcc);
-            setState(AppState.PROFILE_CREATE);
-        }
-    }
-    setIsAuthLoading(false);
-  };
-
   const handleGoogleLogin = async () => {
     setAuthError('');
     await handleUnlockAudio();
-    
+
     setIsAuthLoading(true);
     setAuthStage('verifying');
     triggerHaptic(15);
-    
-    await new Promise(r => setTimeout(r, 2000));
-    
-    const mockEmail = "explorer.kid@gmail.com";
-    const fetchedNameFromGoogle = "Google Explorer";
-    
-    const db = getDb();
-    let found = db.find(a => a.email.toLowerCase() === mockEmail.toLowerCase());
-    
-    if (!found) { 
-        found = { 
-            email: mockEmail, 
-            googleId: "12345", 
-            name: fetchedNameFromGoogle, 
-            profiles: [] 
-        }; 
-        db.push(found); 
-        saveDb(db);
+
+    // Check if we have a Google credential
+    if (!googleCredential) {
+      // This shouldn't happen since this function is called when credential is set
+      setAuthError('Google Sign-In failed. Please try again.');
+      setIsAuthLoading(false);
+      return;
     }
-    
-    setAccount(found);
-    setAuthStage('success');
-    await new Promise(r => setTimeout(r, 800));
-    
-    setIsAuthLoading(false);
-    setAuthStage('idle');
-    
-    if (found.profiles.length === 0) setState(AppState.PROFILE_CREATE);
-    else setState(AppState.PROFILE_SELECT);
+
+    try {
+      // Decode the JWT token to get user information
+      const payload = JSON.parse(atob(googleCredential.split('.')[1]));
+      const googleEmail = payload.email;
+      const googleName = payload.name;
+      const googleId = payload.sub;
+      const googlePicture = payload.picture;
+
+      const db = getDb();
+      let found = db.find(a => a.googleId === googleId);
+
+      if (!found) {
+        found = {
+          email: googleEmail,
+          googleId: googleId,
+          name: googleName,
+          picture: googlePicture,
+          profiles: []
+        };
+        db.push(found);
+        saveDb(db);
+      }
+
+      setAccount(found);
+      setAuthStage('success');
+      await new Promise(r => setTimeout(r, 800));
+
+      setIsAuthLoading(false);
+      setAuthStage('idle');
+
+      if (found.profiles.length === 0) setState(AppState.PROFILE_CREATE);
+      else setState(AppState.PROFILE_SELECT);
+    } catch (error) {
+      console.error('Error processing Google Sign-In:', error);
+      setAuthError('Failed to sign in with Google. Please try again.');
+      setIsAuthLoading(false);
+      setAuthStage('idle');
+    }
   };
 
   const handleProfileSelect = async (p: UserProfile) => {
@@ -287,9 +327,6 @@ const App: React.FC = () => {
       localStorage.removeItem('current_account_v12');
       setAccount(null);
       setUserProfile(null);
-      setEmailInput('');
-      setPasswordInput('');
-      setAuthMode('login');
       setState(AppState.LOGIN);
   };
 
@@ -329,38 +366,21 @@ const App: React.FC = () => {
   if (state === AppState.LOGIN) return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-white font-['Fredoka']">
       <div className="bg-white p-6 md:p-10 rounded-[40px] shadow-2xl max-w-sm w-full border border-slate-100 animate-popIn">
-        <div className="text-center mb-6">
+        <div className="text-center mb-8">
             <div className="text-6xl mb-4 animate-float">🏔️</div>
             <h1 className="text-3xl font-black text-gray-800 tracking-tighter">Nepali Explorer</h1>
             <p className="text-red-500 text-sm font-bold">Start your magic journey!</p>
         </div>
-        
-        <div className="space-y-3 mb-4">
-            {authMode === 'signup' && (
-                <input type="text" value={accountNameInput} onChange={e => setAccountNameInput(e.target.value)} placeholder="Your Name" className="w-full p-4 bg-white border-2 border-slate-100 rounded-2xl outline-none font-bold text-base focus:border-red-400 transition" />
-            )}
-            <input type="email" value={emailInput} onChange={e => setEmailInput(e.target.value)} placeholder="Email Address" className="w-full p-4 bg-white border-2 border-slate-100 rounded-2xl outline-none font-bold text-base focus:border-red-400 transition" />
-            <input type="password" value={passwordInput} onChange={e => setPasswordInput(e.target.value)} placeholder="Password" className="w-full p-4 bg-white border-2 border-slate-100 rounded-2xl outline-none font-bold text-base focus:border-red-400 transition" />
-            
-            {authError && <p className="text-rose-500 font-black text-center text-xs animate-shake">{authError}</p>}
-            
-            <button onClick={handleEmailAuth} disabled={isAuthLoading} className="w-full bg-red-600 text-white py-4 rounded-2xl font-black text-lg shadow-xl hover:scale-105 active:translate-y-1 border-b-4 border-red-800 transition">
-                {isAuthLoading ? '...' : authMode === 'login' ? 'Sign In' : 'Sign Up'}
-            </button>
-        </div>
 
-        <button 
-            onClick={handleGoogleLogin} 
-            disabled={isAuthLoading} 
-            className={`w-full flex items-center justify-center gap-2 p-4 rounded-2xl font-black shadow-md border border-slate-100 ${authStage === 'verifying' ? 'bg-amber-100 border-amber-300' : authStage === 'success' ? 'bg-emerald-500 border-emerald-700 text-white' : 'bg-white hover:border-red-500'} transition`}
-        >
-          {authStage === 'verifying' ? 'Verifying...' : authStage === 'success' ? '✅ Welcome!' : 'Google Login'}
-        </button>
+        {authError && <p className="text-rose-500 font-black text-center text-xs animate-shake mb-4">{authError}</p>}
+
+        <div 
+            id="google-signin-button"
+            className="w-full"
+        ></div>
 
         <p className="mt-6 text-center text-slate-400 text-sm font-bold">
-            <button onClick={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')} className="text-red-500 hover:underline">
-                {authMode === 'login' ? "New here? Join us!" : "Already an explorer?"}
-            </button>
+            Sign in with your Google account to continue
         </p>
       </div>
     </div>
@@ -401,7 +421,7 @@ const App: React.FC = () => {
           <span className="font-black text-xl text-amber-300">Add</span>
         </button>
       </div>
-      <button onClick={handleLogout} className="mt-12 text-slate-300 text-sm font-bold hover:text-slate-500 transition underline">Switch Account</button>
+      <button onClick={() => setState(AppState.PROFILE_SELECT)} className="mt-12 text-slate-300 text-sm font-bold hover:text-slate-500 transition underline">Switch Account</button>
     </div>
   );
 
@@ -456,6 +476,7 @@ const App: React.FC = () => {
   const voiceBusy = isVoiceLimited();
 
   return (
+    
     <div className="min-h-screen flex flex-col bg-slate-50 font-['Fredoka']">
       <SoundBakery />
       <header className={`${theme.headerBg} p-2 md:p-3 border-b-2 ${theme.headerBorder} flex items-center justify-between sticky top-0 z-50 shadow-sm backdrop-blur-xl bg-opacity-95`}>
@@ -471,8 +492,11 @@ const App: React.FC = () => {
           </div>
 
           <button onClick={refreshFunFact} disabled={factLoading} className="hidden md:flex flex-1 max-w-xs mx-4 bg-white px-4 py-1.5 rounded-full shadow-inner border border-slate-100 items-center gap-2 hover:bg-slate-50 transition group">
-            <span className="text-sm animate-bounce">🍭</span>
+            <span className={`text-sm ${factLoading ? 'animate-spin' : 'animate-bounce'}`}>{factLoading ? '⏳' : preloadedFacts.length > 0 ? '🍭' : '🔄'}</span>
             <span className={`text-[10px] font-bold text-gray-500 italic truncate ${factLoading ? 'opacity-30' : ''}`}>{funFact}</span>
+            {preloadedFacts.length > 0 && !factLoading && (
+                <span className="text-[8px] bg-green-500 text-white px-1.5 py-0.5 rounded-full font-black">{preloadedFacts.length}</span>
+            )}
           </button>
 
           <div className="flex items-center gap-3">
@@ -501,6 +525,20 @@ const App: React.FC = () => {
       <main className="flex-1 max-w-5xl mx-auto w-full p-4 md:p-6 pb-20 relative overflow-x-hidden">
         {state === AppState.HOME && (
             <div className="flex flex-col items-center py-4 animate-fadeIn">
+                 {/* Mobile Fun Fact Button */}
+                 <div className="md:hidden w-full max-w-sm mb-6">
+                     <button onClick={refreshFunFact} disabled={factLoading} className="w-full bg-white px-4 py-3 rounded-2xl shadow-lg border border-slate-100 items-center gap-3 hover:bg-slate-50 transition flex">
+                        <span className={`text-lg ${factLoading ? 'animate-spin' : 'animate-bounce'}`}>{factLoading ? '⏳' : preloadedFacts.length > 0 ? '🍭' : '🔄'}</span>
+                        <div className="flex-1 text-left">
+                            <div className="text-xs font-bold text-gray-400 uppercase tracking-widest">Fun Fact</div>
+                            <div className={`text-sm font-bold text-gray-600 truncate ${factLoading ? 'opacity-30' : ''}`}>{funFact}</div>
+                        </div>
+                        {preloadedFacts.length > 0 && !factLoading && (
+                            <span className="text-xs bg-green-500 text-white px-2 py-1 rounded-full font-black">{preloadedFacts.length}</span>
+                        )}
+                     </button>
+                 </div>
+
                  <h2 className="text-3xl md:text-5xl font-black mb-8 text-center text-gray-800 tracking-tighter">
                     {showTranslation ? currentLangConfig.name : 'नेपाली'} <span className="text-red-600">{showTranslation ? 'Explorer!' : 'अन्वेषक!'}</span>
                  </h2>
@@ -524,34 +562,26 @@ const App: React.FC = () => {
                  </div>
 
                  {wotd && (
-                     <div className={`mt-10 w-full bg-white rounded-[40px] p-6 shadow-xl border border-white relative overflow-hidden group flex flex-col md:flex-row items-center gap-6 border-b-[10px] ${theme.headerBorder.replace('border-', 'border-b-')}`}>
-                        <div className={`absolute inset-0 bg-gradient-to-br ${theme.gradient} opacity-[0.98]`}></div>
-                        <div className="relative z-10 w-full md:w-1/2 flex flex-col text-white">
-                            <span className="bg-yellow-400 text-yellow-900 self-start px-4 py-1 rounded-full font-black text-[8px] uppercase tracking-widest mb-4">Magic Word 💎</span>
-                            <div className="mb-4">
-                                <span className="text-5xl md:text-6xl font-black tracking-tighter leading-none">{wotd.word}</span>
-                                <span className="text-lg opacity-80 block italic">({wotd.transliteration})</span>
-                            </div>
-                            <p className={`text-3xl font-black text-yellow-300 mb-4 tracking-tighter ${showTranslation ? '' : 'hidden'}`}>{wotd.english}</p>
-                            <button onClick={() => speakText(wotd.word, userProfile?.voice)} disabled={voiceBusy} className="self-start flex items-center gap-2 bg-white text-indigo-600 px-8 py-4 rounded-[20px] font-black shadow-lg text-sm active:translate-y-1 transition border-b-4 border-indigo-100 disabled:opacity-50">
-                                🔊 Hear Sound
-                            </button>
-                        </div>
-                        <div className="relative z-10 w-full md:w-1/2 h-48 md:h-64 rounded-3xl overflow-hidden shadow-lg border-4 border-white/20">
-                            {wotdImage ? (
-                                <img src={wotdImage} alt={wotd.word} className="w-full h-full object-cover" />
-                            ) : (
-                                <div className="w-full h-full bg-indigo-900/60 flex items-center justify-center text-4xl animate-pulse">🎨</div>
-                            )}
-                        </div>
-                     </div>
+                   <div className={`mt-10 w-full bg-white rounded-[40px] shadow-xl border border-white relative overflow-hidden group border-b-[10px] h-[60vh] md:h-[70vh] min-h-[320px] ${theme.headerBorder.replace('border-', 'border-b-')}`}>
+                    {/* Homepage Image - Full Canvas */}
+                    <img
+                      src="/assets/images/Homepage.webp"
+                      alt="Nepali Kids in Traditional Dress"
+                      className="absolute inset-0 w-full h-full object-contain"
+                    />
+                    {/* Text Overlay */}
+                    <div className="relative z-10 h-full w-full flex flex-col items-center justify-center text-white">
+                      <span className="bg-yellow-400 text-yellow-900 px-3 py-1 rounded-full font-black text-[8px] uppercase tracking-widest mb-2">Welcome to Nepal 🏔️</span>
+                      <p className="text-xs text-white/80 font-bold">Beautiful Nepal</p>
+                    </div>
+                   </div>
                  )}
             </div>
         )}
         <div className={state === AppState.HOME ? 'hidden' : 'block'}>
             {state === AppState.ALPHABET && <AlphabetSection language={currentLang} userProfile={userProfile!} showTranslation={showTranslation} addXp={addXp} />}
             {state === AppState.WORDS && <WordBuilder language={currentLang} userProfile={userProfile!} showTranslation={showTranslation} addXp={addXp} completeWord={completeWord} />}
-            {state === AppState.DISCOVERY && <CultureHub language={currentLang} userProfile={userProfile!} showTranslation={showTranslation} addXp={addXp} />}
+            {state === AppState.DISCOVERY && <CultureHub language={currentLang} userProfile={userProfile!} showTranslation={showTranslation} addXp={addXp} googleCredential={googleCredential} />}
             {state === AppState.PHRASES && <PhrasebookSection language={currentLang} userProfile={userProfile!} showTranslation={showTranslation} addXp={addXp} />}
             {state === AppState.PRACTICE && <VoicePractice language={currentLang} userProfile={userProfile!} addXp={addXp} />}
         </div>

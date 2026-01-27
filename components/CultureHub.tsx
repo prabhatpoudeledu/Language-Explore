@@ -10,11 +10,12 @@ interface Props {
     userProfile: UserProfile;
     showTranslation: boolean;
     addXp: (amount: number) => void;
+    googleCredential?: string | null;
 }
 
 type TabId = 'places' | 'songs' | 'puzzles';
 
-export const CultureHub: React.FC<Props> = ({ language, userProfile, showTranslation, addXp }) => {
+export const CultureHub: React.FC<Props> = ({ language, userProfile, showTranslation, addXp, googleCredential }) => {
     const [activeTab, setActiveTab] = useState<TabId>('places');
     const langConfig = LANGUAGES.find(l => l.code === language)!;
 
@@ -54,7 +55,7 @@ export const CultureHub: React.FC<Props> = ({ language, userProfile, showTransla
                     <NepalMap language="np" userProfile={userProfile} showTranslation={showTranslation} addXp={addXp} />
                 )}
                 {activeTab === 'songs' && (
-                    <SongSection language={language} userProfile={userProfile} showTranslation={showTranslation} addXp={addXp} />
+                    <SongSection language={language} userProfile={userProfile} showTranslation={showTranslation} addXp={addXp} googleCredential={googleCredential} />
                 )}
                 {activeTab === 'puzzles' && (
                     <PuzzleSection language={language} userProfile={userProfile} showTranslation={showTranslation} addXp={addXp} />

@@ -1,5 +1,8 @@
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { LanguageCode, LANGUAGES, TravelDiscovery } from '../types';
 import { speakText, triggerHaptic, generateTravelImage } from '../services/geminiService';
 
@@ -31,30 +34,73 @@ export const NepalMap: React.FC<Props> = ({ language, userProfile, addXp, showTr
         addXp(10);
     };
 
+    // Fix for default markers in webpack/vite
+    delete (L.Icon.Default.prototype as any)._getIconUrl;
+    L.Icon.Default.mergeOptions({
+        iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+        iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+    });
+
+    // Custom icon for markers
+    const customIcon = new L.Icon({
+        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
+        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41]
+    });
+
+    const MapSizer: React.FC = () => {
+        const map = useMap();
+
+        useEffect(() => {
+            const resize = () => map.invalidateSize();
+            const timeout = window.setTimeout(resize, 100);
+            window.addEventListener('resize', resize);
+            return () => {
+                window.clearTimeout(timeout);
+                window.removeEventListener('resize', resize);
+            };
+        }, [map]);
+
+        return null;
+    };
+
     return (
         <div className="w-full flex flex-col items-center animate-fadeIn pb-10">
-            <div className="relative w-full max-w-4xl aspect-[2/1] bg-blue-50/20 rounded-[40px] border-4 border-white shadow-inner overflow-hidden group">
-                <div className="absolute inset-0 flex items-center justify-center opacity-10 pointer-events-none">
-                    <svg viewBox="0 0 1000 500" className="w-full h-full text-indigo-100 fill-current">
-                        <path d="M50,150 L200,100 L400,120 L600,150 L850,200 L950,350 L800,450 L600,400 L400,380 L150,420 L50,350 Z" />
-                    </svg>
-                </div>
-
-                {langConfig.travelDiscoveries.map(place => (
-                    <button
-                        key={place.id}
-                        onClick={() => handlePlaceClick(place)}
-                        style={{ left: `${place.coords.x}%`, top: `${place.coords.y}%` }}
-                        className={`absolute transform -translate-x-1/2 -translate-y-1/2 transition-all duration-300 flex flex-col items-center gap-1 group/pin z-10`}
-                    >
-                        <div className={`w-10 h-10 md:w-12 md:h-12 rounded-2xl shadow-lg flex items-center justify-center text-xl md:text-2xl transition-transform active:scale-90 group-hover/pin:scale-110 border-2 border-white ${selectedPlace?.id === place.id ? 'bg-red-500 text-white' : 'bg-white text-gray-800'}`}>
-                            {place.icon}
-                        </div>
-                        <span className={`px-3 py-1 rounded-full bg-white/90 backdrop-blur shadow text-[8px] md:text-[10px] font-black tracking-tight transition-opacity ${selectedPlace?.id === place.id ? 'opacity-100 text-red-600' : 'opacity-0 group-hover/pin:opacity-100'}`}>
-                            {showTranslation ? place.titleEn : place.titleNative}
-                        </span>
-                    </button>
-                ))}
+            <div className="relative w-full max-w-4xl h-[600px] rounded-[40px] border-4 border-white shadow-inner overflow-hidden group">
+                <MapContainer 
+                    center={[28.3949, 84.1240]} 
+                    zoom={7} 
+                    style={{ height: '100%', width: '100%', borderRadius: '36px' }}
+                >
+                    <MapSizer />
+                    <TileLayer
+                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    />
+                    {langConfig.travelDiscoveries.map(place => (
+                        <Marker
+                            key={place.id}
+                            position={[place.lat, place.lng]}
+                            icon={customIcon}
+                            eventHandlers={{
+                                click: () => handlePlaceClick(place),
+                            }}
+                        >
+                            <Popup>
+                                <div className="text-center">
+                                    <div className="text-2xl mb-2">{place.icon}</div>
+                                    <h3 className="font-bold text-lg">{showTranslation ? place.titleEn : place.titleNative}</h3>
+                                    <p className="text-sm text-gray-600">{showTranslation ? place.titleNative : place.titleEn}</p>
+                                    <p className="text-sm mt-2">{showTranslation ? place.descriptionEn : place.descriptionNative}</p>
+                                </div>
+                            </Popup>
+                        </Marker>
+                    ))}
+                </MapContainer>
 
                 {selectedPlace && (
                     <div className="absolute inset-x-4 bottom-4 md:inset-x-auto md:right-4 md:bottom-4 md:w-[320px] bg-white rounded-3xl p-5 shadow-2xl border border-slate-100 animate-popIn z-30">

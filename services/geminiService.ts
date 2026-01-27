@@ -419,13 +419,18 @@ export const translatePhrase = async (text: string, lang: LanguageCode): Promise
     try {
         const response = await generateContentWithRetry({
             model: "gemini-3-flash-preview",
-            contents: `Translate "${text}" into ${getLangName(lang)} for a child.`,
+            contents: `Translate "${text}" into ${getLangName(lang)} for a child. Provide a practical, commonly used phrase.`,
             config: {
                 responseMimeType: "application/json",
                 responseSchema: {
                     type: Type.OBJECT,
-                    properties: { native: { type: Type.STRING }, transliteration: { type: Type.STRING }, english: { type: Type.STRING }, category: { type: Type.STRING } },
-                    required: ["native", "transliteration", "english"]
+                    properties: { 
+                        native: { type: Type.STRING }, 
+                        transliteration: { type: Type.STRING }, 
+                        english: { type: Type.STRING }, 
+                        category: { type: Type.STRING, enum: ["Greeting", "Food", "Daily"] }
+                    },
+                    required: ["native", "transliteration", "english", "category"]
                 }
             }
         });
@@ -452,6 +457,112 @@ export const validateHandwriting = async (base64: string, char: string, lang: La
     } catch (e) { return false; }
 };
 
-export const fetchSongsByCategory = async (lang: LanguageCode, category: string): Promise<SongData[]> => [];
+export const fetchSongsByCategory = async (lang: LanguageCode, category: string): Promise<SongData[]> => {
+    // For now, return static data. In the future, this could fetch from an API or database
+    if (lang === 'np') {
+        if (category === 'National') {
+            return [
+                {
+                    title: "We are Hundreds of Flowers",
+                    titleNative: "सयौं थुंगा फूलका हामी",
+                    category: "National",
+                    description: "The national anthem of Nepal, symbolizing unity and diversity of the Nepali people.",
+                    descriptionNative: "नेपालको राष्ट्रिय गान, नेपाली जनताको एकता र विविधतालाई प्रतिबिम्बित गर्ने।",
+                    lyricsOriginal: `सयौ थुङ्गा फूलका हामी एउटै माला नेपाली
+सार्वभौम  भै फैलिएका मेची-महाकाली
+सयौ  थुङ्गा फूलका हामी एउटै माला नेपाली
+सार्वभौम भै फैलिएका मेची-महाकाली
+
+प्रकृतिका कोटी-कोटी सम्पदाको आंचल
+बिरहरूका  रगतले स्वतन्त्र र अटल
+ज्ञान  भुमी, शान्ति भुमी, तराई, पहाड, हिमाल
+अखण्ड यो प्यारो हाम्रो मातृ भुमी नेपाल
+बहुल  जाति भाषाधर्म सस्कृति छन् विशाल
+अग्रगामी राष्ट्र हाम्रो जय-जय नेपाल`,
+                    youtubeId: "F0GYEj_jhWY" // Official Nepali national anthem video
+                }
+            ];
+        } else if (category === 'Cultural') {
+            return [
+                {
+                    title: "Sindoor Jasma",
+                    titleNative: "सिन्दूर जस्मा",
+                    category: "Cultural",
+                    description: "A traditional Nepali wedding song celebrating the beauty and grace of Nepali brides in traditional attire.",
+                    descriptionNative: "परम्परागत पोशाकमा नेपाली दुलहीहरूको सुन्दरता र कृपा मनाउने परम्परागत नेपाली विवाह गीत।",
+                    lyricsOriginal: `सिन्दूर जस्मा सिन्दूर
+मेरो प्रीतमको रुप
+सिन्दूर जस्मा सिन्दूर
+
+निलो आकाशको तारा
+जूनको जूनकी रानी
+सिन्दूर जस्मा सिन्दूर
+
+मेरो प्रीतमको रुप
+सुनको फूल जस्तै
+सिन्दूर जस्मा सिन्दूर`,
+                    youtubeId: "rbBMwI0ef3w" // Traditional Nepali cultural song
+                }
+            ];
+        } else if (category === 'Religious') {
+            return [
+                {
+                    title: "Bhajan",
+                    titleNative: "भजन",
+                    category: "Religious",
+                    description: "Sacred Nepali devotional songs (Bhajans) sung during religious ceremonies and festivals.",
+                    descriptionNative: "धार्मिक समारोह र चाडपर्वहरूमा गाइने पवित्र नेपाली भक्ति गीतहरू (भजन)।",
+                    lyricsOriginal: `राधे कृष्णा राधे कृष्णा
+कृष्णा कृष्णा हरे हरे
+हरे राम हरे राम
+राम राम हरे हरे
+
+गोविन्दा गोपाला
+देवकी नन्दन
+गोविन्दा गोपाला
+देवकी नन्दन`,
+                    youtubeId: "9eY93xAilfw" // Traditional Nepali devotional song - Bhajan
+                }
+            ];
+        } else if (category === 'Folk') {
+            return [
+                {
+                    title: "Resham Firiri",
+                    titleNative: "रेशम फिरिरी",
+                    category: "Folk",
+                    description: "A beloved Nepali folk song expressing love, longing, and the beauty of rural life in Nepal.",
+                    descriptionNative: "नेपालको ग्रामीण जीवनको सुन्दरता, प्रेम र विरह व्यक्त गर्ने प्रिय नेपाली लोक गीत।",
+                    lyricsOriginal: `रेशम  फिरिरी रेशम  फिरिरी
+उडेर जाउँ कि डाँडामा भन्ज्यांग,
+रेशम  फिरिरी
+
+कुकुरलाई कुती कुती, बिरालोलाई सुरी
+तिम्रो हाम्रो माया प्रिती दोबाटोमा कुरी
+एकनाले बन्दुक  दुइनाले बन्दुक, मिर्गलाई ताकेको
+मिर्गलाई मैले ताकेको होइन, मायालाई डाकेको
+आकाशमा जहाज  सडकमा मोटर नभए गाडा छ
+यो मन जस्तो त्यो मन भए तागत गाढा छ
+सानोमा सानो गाईको बाच्छो भिरैमा राम  राम
+छोडेर जान सकिन मैले, बरु माया संगै जाउँ`,
+                    youtubeId: "Z5YPAZotbNI" // Traditional Nepali folk song - Resham Firiri
+                }
+            ];
+        }
+    }
+
+    // Return empty array for other languages or categories
+    return [];
+};
 export const performCloudSync = async (email: string, account: AccountData | null) => account;
 export const pushToCloud = async (account: AccountData) => true;
+export const geminiService = {
+  generateImage: async (prompt: string) => {
+    // Your Gemini image generation logic
+    // Return URL or base64
+  },
+  generateAudio: async (text: string, lang: string) => {
+    // Your Gemini TTS logic
+    // Return audio URL
+  },
+  // Add other methods like generateWordAudio, etc.
+};

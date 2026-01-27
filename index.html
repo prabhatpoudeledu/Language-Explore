@@ -3,8 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="google-signin-client_id" content="846343185208-374hm61eu50s8mghbss1ofsvbg2g7g8n.apps.googleusercontent.com" />
     <title>Nepali Kids Explorer</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://www.youtube.com/iframe_api" async defer></script>
     <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@300;400;600&display=swap" rel="stylesheet">
     <style>
       body {
@@ -58,5 +61,50 @@
 </head>
   <body class="bg-gradient-to-br from-blue-50 via-white to-purple-50 min-h-screen text-gray-800">
     <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+    
+    <!-- Google Identity Services Initialization -->
+    <script>
+      // Global function to handle Google Sign-In response
+      function handleGoogleSignIn(response) {
+        // This will be called when Google Sign-In is successful
+        // The response contains the JWT token
+        console.log('Google Sign-In successful:', response);
+
+        // Dispatch a custom event that React can listen to
+        window.dispatchEvent(new CustomEvent('googleSignIn', {
+          detail: { credential: response.credential }
+        }));
+      }
+
+      // Initialize Google Identity Services when the script loads
+      window.addEventListener('load', function() {
+        if (window.google && window.google.accounts) {
+          window.google.accounts.id.initialize({
+            client_id: '846343185208-374hm61eu50s8mghbss1ofsvbg2g7g8n.apps.googleusercontent.com',
+            callback: handleGoogleSignIn,
+            auto_select: false,
+            cancel_on_tap_outside: true
+          });
+
+          // Don't render button here - let React handle it
+        }
+      });
+
+      // Function to render Google Sign-In button (called from React)
+      window.renderGoogleSignInButton = function() {
+        if (window.google && window.google.accounts && window.google.accounts.id) {
+          window.google.accounts.id.renderButton(
+            document.getElementById('google-signin-button'),
+            {
+              theme: 'outline',
+              size: 'large',
+              width: '100%',
+              text: 'continue_with'
+            }
+          );
+        }
+      };
+    </script>
   </body>
 </html>

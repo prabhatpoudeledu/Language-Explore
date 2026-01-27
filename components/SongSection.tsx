@@ -8,6 +8,7 @@ interface Props {
     userProfile: UserProfile;
     showTranslation: boolean;
     addXp: (amount: number) => void;
+    googleCredential?: string | null;
 }
 
 const CATEGORIES = [
@@ -17,7 +18,7 @@ const CATEGORIES = [
     { id: 'Folk', label: 'Folk Songs', icon: '🪕', color: 'bg-green-500' }
 ];
 
-export const SongSection: React.FC<Props> = ({ language, userProfile, showTranslation, addXp }) => {
+export const SongSection: React.FC<Props> = ({ language, userProfile, showTranslation, addXp, googleCredential }) => {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [songs, setSongs] = useState<SongData[]>([]);
   const [loading, setLoading] = useState(false);
@@ -88,13 +89,20 @@ export const SongSection: React.FC<Props> = ({ language, userProfile, showTransl
                             <div key={i} className="bg-white rounded-[50px] overflow-hidden shadow-2xl border border-pink-50 flex flex-col hover:shadow-pink-100 transition">
                                 <div className="aspect-video bg-black relative group">
                                     {song.youtubeId && song.youtubeId !== 'SEARCH_ONLY' ? (
-                                        <iframe 
-                                            width="100%" height="100%" 
-                                            src={`https://www.youtube.com/embed/${song.youtubeId}`} 
-                                            title={song.title} frameBorder="0" 
-                                            allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" 
-                                            allowFullScreen className="w-full h-full"
-                                        ></iframe>
+                                        <div className="relative">
+                                            <iframe 
+                                                width="100%" height="100%" 
+                                                src={`https://www.youtube.com/embed/${song.youtubeId}?enablejsapi=1&origin=${window.location.origin}&modestbranding=1&rel=0`} 
+                                                title={song.title} frameBorder="0" 
+                                                allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; fullscreen" 
+                                                allowFullScreen className="w-full h-full"
+                                            ></iframe>
+                                            {googleCredential && (
+                                                <div className="absolute top-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded-full flex items-center gap-1">
+                                                    <span>🔗</span> Using your Google account
+                                                </div>
+                                            )}
+                                        </div>
                                     ) : (
                                         <div className="w-full h-full flex items-center justify-center text-white flex-col bg-gray-900">
                                             <span className="text-5xl mb-3">🎹</span>
@@ -124,7 +132,7 @@ export const SongSection: React.FC<Props> = ({ language, userProfile, showTransl
                                     <h3 className="text-3xl font-bold text-gray-800 mb-1">{song.titleNative}</h3>
                                     <p className={`text-base text-pink-400 font-bold mb-6 italic transition-all ${showTranslation ? '' : 'invisible h-0'}`}>{song.title}</p>
                                     
-                                    <div className="bg-slate-50 p-6 rounded-[30px] mt-auto border border-slate-100 relative max-h-40 overflow-y-auto">
+                                    <div className="bg-slate-50 p-6 rounded-[30px] mt-auto border border-slate-100 relative">
                                         <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Poetry / Lyrics</h4>
                                         <p className="font-serif text-lg text-gray-800 italic leading-relaxed whitespace-pre-line">
                                             {song.lyricsOriginal}
