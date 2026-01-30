@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { fetchAlphabet, speakText, triggerHaptic, stopAllAudio, getAudioVault, preCacheAlphabet, unlockAudio, geminiService } from '../services/geminiService';
+import { fetchAlphabet, speakText, triggerHaptic, stopAllAudio, getAudioVault, preCacheAlphabet, unlockAudio, geminiService, resolveVoiceId, tryPlayLocalSoundWithTransliteration, registerHtmlAudio, unregisterHtmlAudio } from '../services/geminiService';
 import { LetterData, LanguageCode, UserProfile, LANGUAGES, ExampleWord } from '../types';
 
 interface Props {
@@ -23,10 +23,20 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
   const [isDrawing, setIsDrawing] = useState(false);
   const [cachedSounds, setCachedSounds] = useState<Set<string>>(new Set());
   const [lastClickedChar, setLastClickedChar] = useState<string | null>(null);
+  const [isGroupPlaying, setIsGroupPlaying] = useState(false);
+  const [groupPlayingType, setGroupPlayingType] = useState<'Vowel' | 'Consonant' | null>(null);
+  const [playingChar, setPlayingChar] = useState<string | null>(null);
+  const [playingComboChar, setPlayingComboChar] = useState<string | null>(null);
+  const [isComboGroupPlaying, setIsComboGroupPlaying] = useState(false);
+  const cancelPlaybackRef = useRef(false);
 
   const [exampleImageSrc, setExampleImageSrc] = useState<string>('');
 
   const isEnglishMode = showTranslation;
+  const voiceId = resolveVoiceId(userProfile);
+  const traceColor = userProfile.avatar === '👦' || userProfile.gender === 'male'
+    ? '#60a5fa'
+    : '#d946ef';
 
   // Resize canvases
   useEffect(() => {
@@ -75,7 +85,7 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
     gctx.textBaseline = 'middle';
 
     // Soft sky blue faint guide
-    gctx.strokeStyle = '#93c5fd';
+    gctx.strokeStyle = traceColor;
     gctx.lineWidth = 8;
     gctx.strokeText(traceText, width / 2, height / 2);
   };
@@ -90,7 +100,7 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
       try {
         const data = await fetchAlphabet(language);
         setLetters(data);
-        preCacheAlphabet(language, userProfile.voice);
+        preCacheAlphabet(language, voiceId);
         const vault = getAudioVault();
         setCachedSounds(new Set(Object.keys(vault)));
       } catch (e) {} finally { setLoading(false); }
@@ -105,7 +115,23 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
         stopAllAudio();
         clearInterval(interval);
     };
-  }, [language, userProfile.voice]);
+  }, [language, voiceId]);
+
+  const resetPlayback = () => {
+    cancelPlaybackRef.current = true;
+    stopAllAudio();
+    setIsGroupPlaying(false);
+    setGroupPlayingType(null);
+    setPlayingChar(null);
+    setPlayingComboChar(null);
+    setIsComboGroupPlaying(false);
+  };
+
+  useEffect(() => {
+    return () => {
+      resetPlayback();
+    };
+  }, []);
 
   const clearCanvas = () => {
     const ctx = canvasRef.current?.getContext('2d');
@@ -115,20 +141,111 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
     }
   };
 
-  const playLetterSound = async (letter: LetterData) => {
+  const playLetterSoundWithPromise = async (letter: LetterData) => {
     await unlockAudio();
-    setIsSoundLoading(true);
-
+    setPlayingChar(letter.char);
     const localAudio = letter.letterNepaliAudio;
+
     if (localAudio) {
-      const audio = new Audio(localAudio);
-      audio.onended = () => setIsSoundLoading(false);
-      audio.onerror = () => {
-        speakText(letter.char, userProfile.voice).finally(() => setIsSoundLoading(false));
-      };
-      audio.play().catch(() => speakText(letter.char, userProfile.voice).finally(() => setIsSoundLoading(false)));
-    } else {
-      speakText(letter.char, userProfile.voice).finally(() => setIsSoundLoading(false));
+      return new Promise<void>((resolve) => {
+        let didFallback = false;
+        const audio = new Audio(localAudio);
+        registerHtmlAudio(audio);
+
+        const finish = () => {
+          unregisterHtmlAudio(audio);
+          audio.onended = null;
+          audio.onerror = null;
+          setPlayingChar(null);
+          resolve();
+        };
+
+        const fallback = async () => {
+          if (didFallback) return;
+          didFallback = true;
+          try {
+            await speakText(letter.char, voiceId);
+          } finally {
+            setPlayingChar(null);
+            resolve();
+          }
+        };
+
+        audio.onended = finish;
+        audio.onerror = () => {
+          unregisterHtmlAudio(audio);
+          fallback();
+        };
+        audio.play().catch(fallback);
+      });
+    }
+
+    await speakText(letter.char, voiceId);
+    setPlayingChar(null);
+  };
+
+  const playLetterSound = async (letter: LetterData) => {
+    setIsSoundLoading(true);
+    try {
+      await playLetterSoundWithPromise(letter);
+    } finally {
+      setIsSoundLoading(false);
+    }
+  };
+
+  const playLetterGroup = async (type: 'Vowel' | 'Consonant') => {
+    if (isGroupPlaying) return;
+    const list = letters.filter(l => l.type === type);
+    if (list.length === 0) return;
+
+    cancelPlaybackRef.current = false;
+    setIsGroupPlaying(true);
+    setGroupPlayingType(type);
+    stopAllAudio();
+
+    try {
+      await unlockAudio();
+      for (const letter of list) {
+        if (cancelPlaybackRef.current) break;
+        await playLetterSoundWithPromise(letter);
+        if (cancelPlaybackRef.current) break;
+        await new Promise(r => setTimeout(r, 250));
+      }
+    } finally {
+      setPlayingChar(null);
+      setIsGroupPlaying(false);
+      setGroupPlayingType(null);
+    }
+  };
+
+  const playComboSound = async (comboChar: string) => {
+    setPlayingComboChar(comboChar);
+    try {
+      await unlockAudio();
+      await speakText(comboChar, voiceId);
+    } finally {
+      setPlayingComboChar(null);
+    }
+  };
+
+  const playComboGroup = async (combos: { char: string }[]) => {
+    if (isComboGroupPlaying) return;
+    if (!combos || combos.length === 0) return;
+    cancelPlaybackRef.current = false;
+    setIsComboGroupPlaying(true);
+    stopAllAudio();
+    try {
+      await unlockAudio();
+      for (const combo of combos) {
+        if (cancelPlaybackRef.current) break;
+        setPlayingComboChar(combo.char);
+        await speakText(combo.char, voiceId);
+        if (cancelPlaybackRef.current) break;
+        await new Promise(r => setTimeout(r, 200));
+      }
+    } finally {
+      setPlayingComboChar(null);
+      setIsComboGroupPlaying(false);
     }
   };
 
@@ -150,25 +267,51 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
 
   const playNepaliWordSound = async (ex: ExampleWord) => {
     await unlockAudio();
+    const usedLocal = await tryPlayLocalSoundWithTransliteration(ex.transliteration || ex.word, voiceId, false);
+    if (usedLocal) return;
     const localAudio = ex.nepaliAudio;
     if (localAudio) {
+      let didFallback = false;
+      const fallback = () => {
+        if (didFallback) return;
+        didFallback = true;
+        speakText(ex.word, voiceId);
+      };
       const audio = new Audio(localAudio);
-      audio.onerror = () => speakText(ex.word, userProfile.voice);
-      audio.play().catch(() => speakText(ex.word, userProfile.voice));
+      registerHtmlAudio(audio);
+      audio.onerror = fallback;
+      audio.onended = () => unregisterHtmlAudio(audio);
+      audio.play().catch(() => {
+        unregisterHtmlAudio(audio);
+        fallback();
+      });
     } else {
-      speakText(ex.word, userProfile.voice);
+      speakText(ex.word, voiceId);
     }
   };
 
   const playEnglishWordSound = async (ex: ExampleWord) => {
     await unlockAudio();
+    const usedLocal = await tryPlayLocalSoundWithTransliteration(ex.transliteration || ex.word, voiceId, true);
+    if (usedLocal) return;
     const localAudio = ex.englishAudio;
     if (localAudio) {
+      let didFallback = false;
+      const fallback = () => {
+        if (didFallback) return;
+        didFallback = true;
+        speakText(ex.english, voiceId);
+      };
       const audio = new Audio(localAudio);
-      audio.onerror = () => speakText(ex.english, userProfile.voice);
-      audio.play().catch(() => speakText(ex.english, userProfile.voice));
+      registerHtmlAudio(audio);
+      audio.onerror = fallback;
+      audio.onended = () => unregisterHtmlAudio(audio);
+      audio.play().catch(() => {
+        unregisterHtmlAudio(audio);
+        fallback();
+      });
     } else {
-      speakText(ex.english, userProfile.voice);
+      speakText(ex.english, voiceId);
     }
   };
 
@@ -231,7 +374,7 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
     }
     ctx.lineWidth = 14;
     ctx.lineCap = 'round';
-    ctx.strokeStyle = '#f472b6'; // Soft pink
+    ctx.strokeStyle = traceColor;
     ctx.lineTo(x, y);
     ctx.stroke();
     ctx.beginPath();
@@ -294,12 +437,12 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
 
     if (coverage > threshold) {
       setCheckResult('success');
-      speakText(isEnglishMode ? "Amazing! You did it!" : "वाह! तपाईंले गर्नुभयो!", userProfile.voice);
+      speakText(isEnglishMode ? "Amazing! You did it!" : "वाह! तपाईंले गर्नुभयो!", voiceId);
       triggerHaptic([15, 10, 15]);
       addXp(selectedExample ? 20 : 30);
     } else {
       setCheckResult('fail');
-      speakText(isEnglishMode ? "Great try! Let's do it again!" : "राम्रो प्रयास! फेरि गरौं!", userProfile.voice);
+      speakText(isEnglishMode ? "Great try! Let's do it again!" : "राम्रो प्रयास! फेरि गरौं!", voiceId);
       triggerHaptic(20);
     }
   };
@@ -308,21 +451,21 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
 
   if (selectedLetter) {
     return (
-      <div className="max-w-7xl mx-auto animate-fadeIn pb-16 px-4">
-        {/* Header - slick back button */}
-        <div className="flex justify-between items-center mb-6">
-          <button onClick={() => { stopAllAudio(); setSelectedLetter(null); setSelectedExample(null); }} className="flex items-center gap-2 text-base text-gray-600 hover:text-indigo-600 bg-white/80 backdrop-blur-sm px-5 py-2.5 rounded-full shadow-md active:scale-95 transition">
+      <div className="max-w-7xl mx-auto animate-fadeIn pb-16 px-2 md:px-4">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-3 mb-4 md:mb-6">
+          <button onClick={() => { stopAllAudio(); setSelectedLetter(null); setSelectedExample(null); }} className="flex items-center gap-2 text-sm md:text-base text-gray-600 hover:text-indigo-600 bg-white/80 backdrop-blur-sm px-4 md:px-5 py-2 rounded-full shadow-md active:scale-95 transition">
             ← {isEnglishMode ? 'Back to Alphabet' : 'वर्णमाला फर्कनुहोस्'}
-            <span className="text-xs text-gray-400">{isEnglishMode ? '(वर्णमाला फर्कनुहोस्)' : '(Back to Alphabet)'}</span>
+            <span className="hidden md:inline text-xs text-gray-400">{isEnglishMode ? '(वर्णमाला फर्कनुहोस्)' : '(Back to Alphabet)'}</span>
           </button>
-          <div className="flex gap-3">
+          <div className="flex gap-2 md:gap-3">
             {hasPrev && (
-              <button onClick={handlePrev} className="bg-gradient-to-br from-indigo-400 to-indigo-600 w-14 h-14 rounded-full shadow-lg flex items-center justify-center text-2xl font-black text-white active:scale-95 transition">
+              <button onClick={handlePrev} className="bg-gradient-to-br from-indigo-400 to-indigo-600 w-12 h-12 md:w-14 md:h-14 rounded-full shadow-lg flex items-center justify-center text-xl md:text-2xl font-black text-white active:scale-95 transition">
                 {letters[currentIndex - 1].char}
               </button>
             )}
             {hasNext && (
-              <button onClick={handleNext} className="bg-gradient-to-br from-indigo-500 to-indigo-700 w-14 h-14 rounded-full shadow-lg flex items-center justify-center text-2xl font-black text-white active:scale-95 transition">
+              <button onClick={handleNext} className="bg-gradient-to-br from-indigo-500 to-indigo-700 w-12 h-12 md:w-14 md:h-14 rounded-full shadow-lg flex items-center justify-center text-xl md:text-2xl font-black text-white active:scale-95 transition">
                 {letters[currentIndex + 1].char}
               </button>
             )}
@@ -330,94 +473,53 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
         </div>
 
         {/* Main Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left: Letter + Examples */}
-          <div className="space-y-8">
-            {/* Letter Card - slick listen icon */}
-            <div className="bg-white/90 backdrop-blur-md p-8 rounded-3xl shadow-xl border border-indigo-100 text-center">
-              <div className="text-8xl font-black text-indigo-600 mb-4 drop-shadow-md">{selectedLetter.char}</div>
-              <p className="text-2xl text-indigo-300 font-black uppercase tracking-widest mb-8">{selectedLetter.transliteration}</p>
-              {/* Speaker icon button instead of big button */}
-              <button
-                onClick={() => playLetterSound(selectedLetter)}
-                disabled={isSoundLoading}
-                className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-indigo-500 to-indigo-700 shadow-2xl hover:shadow-indigo-500/50 active:scale-95 transition"
-              >
-                <span className="text-3xl">{isSoundLoading ? '⏳' : '🔊'}</span>
-              </button>
-              <p className="text-sm text-indigo-500 mt-3">
-                {isEnglishMode ? 'Listen to Letter' : 'अक्षर सुन्नुहोस्'}
-                <span className="block text-xs text-indigo-400">
-                  {isEnglishMode ? '(अक्षर सुन्नुहोस्)' : '(Listen to Letter)'}
-                </span>
+        <div className="grid grid-cols-1 md:grid-cols-[180px_1fr] lg:grid-cols-[260px_1fr] gap-4 md:gap-6">
+          {/* Left: Letter + Examples (merged) */}
+          <div className="bg-white/90 backdrop-blur-md p-4 md:p-6 rounded-3xl shadow-xl border border-indigo-100">
+            <button
+              onClick={() => playLetterSound(selectedLetter)}
+              disabled={isSoundLoading}
+              className="w-full text-center rounded-2xl active:scale-[0.99] transition"
+            >
+              <div className="text-5xl md:text-7xl font-black text-indigo-600 mb-2 md:mb-3 drop-shadow-md">{selectedLetter.char}</div>
+              <p className="text-sm md:text-xl text-indigo-300 font-black uppercase tracking-widest">
+                {selectedLetter.transliteration}
               </p>
-            </div>
+              <p className="text-[10px] md:text-sm text-indigo-500 mt-2">
+                {isEnglishMode ? 'Tap the letter to hear it' : 'अक्षर थिचेर सुन्नुहोस्'}
+              </p>
+            </button>
 
-            {/* Examples - slick cards */}
-            <div className="bg-white/90 backdrop-blur-md p-8 rounded-3xl shadow-xl border border-amber-100">
-              <h3 className="text-xl font-black text-amber-600 mb-5">
+            <div className="mt-5 md:mt-6">
+              <h3 className="text-sm md:text-lg font-black text-amber-600 mb-3">
                 {isEnglishMode ? 'Example Words' : 'उदाहरण शब्दहरू'}
-                <span className="block text-xs text-amber-400">
-                  {isEnglishMode ? '(उदाहरण शब्दहरू)' : '(Example Words)'}
-                </span>
               </h3>
-              <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
+              <div className="space-y-2 max-h-[320px] md:max-h-96 overflow-y-auto pr-1">
                 {selectedLetter.examples.map((ex, idx) => (
                   <button
                     key={idx}
                     onClick={() => handleExampleClick(ex)}
-                    className={`w-full text-left p-5 rounded-2xl transition-all shadow-md flex items-center justify-between group ${selectedExample?.word === ex.word ? 'bg-gradient-to-r from-amber-200 to-amber-300 border-amber-400' : 'bg-gradient-to-r from-amber-50 to-amber-100 hover:from-amber-100 hover:to-amber-200'}`}
+                    className={`w-full text-left p-3 md:p-4 rounded-2xl transition-all shadow-md ${selectedExample?.word === ex.word ? 'bg-gradient-to-r from-amber-200 to-amber-300 border-amber-400' : 'bg-gradient-to-r from-amber-50 to-amber-100 hover:from-amber-100 hover:to-amber-200'}`}
                   >
-                    <div>
-                      <p className="text-xl font-black text-gray-800">{ex.word}</p>
-                      <p className="text-xs text-gray-500 font-bold uppercase mt-1">{ex.english}</p>
-                    </div>
-                    <span className="text-2xl group-hover:scale-125 transition">🔊</span>
+                    <p className="text-sm md:text-lg font-black text-gray-800">{ex.word}</p>
+                    <p className="text-[10px] md:text-xs text-gray-500 font-bold uppercase mt-0.5">{ex.english}</p>
                   </button>
                 ))}
               </div>
             </div>
           </div>
 
-          {/* Right: Tracing + Small Picture */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Small Picture */}
-            {selectedExample && (
-              <div className="bg-white/90 backdrop-blur-md p-6 rounded-3xl shadow-xl border border-purple-100 flex flex-col items-center">
-                <h3 className="text-lg font-black text-purple-600 mb-4">
-                  {isEnglishMode ? 'Picture' : 'चित्र'}
-                  <span className="block text-xs text-purple-400">
-                    {isEnglishMode ? '(चित्र)' : '(Picture)'}
-                  </span>
-                </h3>
-                <div className="w-full max-w-sm aspect-square bg-slate-50 rounded-2xl overflow-hidden shadow-lg border-4 border-purple-100 relative">
-                  <img
-                    src={exampleImageSrc}
-                    alt={selectedExample.english}
-                    onError={handleImageError}
-                    className="w-full h-full object-cover"
-                  />
-                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2">
-                    <button
-                      onClick={() => playEnglishWordSound(selectedExample)}
-                      className="bg-white/95 backdrop-blur-sm px-5 py-2 rounded-full shadow-lg font-bold text-sm text-blue-600 flex items-center gap-1.5 border-2 border-blue-200 hover:border-blue-400 active:scale-95 transition-all"
-                    >
-                      {isEnglishMode ? 'English' : 'अंग्रेजी'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Horizontal Tracing */}
-            <div className="bg-white/90 backdrop-blur-md p-8 rounded-3xl shadow-xl border border-emerald-100 flex flex-col items-center">
-              <h3 className="text-2xl font-black text-emerald-600 mb-6">
+          {/* Right: Tracing + Picture */}
+          <div className="space-y-4 md:space-y-6">
+            {/* Tracing */}
+            <div className="bg-white/90 backdrop-blur-md p-4 md:p-8 rounded-3xl shadow-xl border border-emerald-100 flex flex-col items-center">
+              <h3 className="text-lg md:text-2xl font-black text-emerald-600 mb-4 md:mb-6 text-center">
                 {selectedExample ? (isEnglishMode ? 'Trace the Word' : 'शब्द लेख्नुहोस्') : (isEnglishMode ? 'Trace the Letter' : 'अक्षर लेख्नुहोस्')}
-                <span className="block text-sm text-emerald-400">
+                <span className="block text-xs md:text-sm text-emerald-400">
                   {selectedExample ? (isEnglishMode ? '(शब्द लेख्नुहोस्)' : '(Trace the Word)') : (isEnglishMode ? '(अक्षर लेख्नुहोस्)' : '(Trace the Letter)')} ✨
                 </span>
               </h3>
-              <div ref={containerRef} className="relative w-full max-w-5xl h-64 bg-gradient-to-b from-emerald-50 to-blue-50 rounded-3xl overflow-hidden border-6 border-emerald-300 shadow-2xl">
+              <div ref={containerRef} className="relative w-full max-w-5xl h-52 md:h-64 bg-gradient-to-b from-emerald-50 to-blue-50 rounded-3xl overflow-hidden border-4 md:border-6 border-emerald-300 shadow-2xl">
                 {/* Faint solid guide */}
                 <canvas
                   ref={guideCanvasRef}
@@ -443,36 +545,70 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
               </div>
 
               {/* Slick Clear & Check buttons */}
-              <div className="flex gap-6 w-full max-w-md mt-8">
-                <button onClick={clearCanvas} className="flex-1 py-4 bg-gradient-to-br from-pink-400 to-pink-500 text-white rounded-2xl font-black text-lg shadow-lg active:scale-95 hover:shadow-pink-500/50 transition">
+              <div className="flex gap-3 md:gap-6 w-full max-w-md mt-6 md:mt-8">
+                <button onClick={clearCanvas} className="flex-1 py-3 md:py-4 bg-gradient-to-br from-pink-400 to-pink-500 text-white rounded-2xl font-black text-sm md:text-lg shadow-lg active:scale-95 hover:shadow-pink-500/50 transition">
                   {isEnglishMode ? 'Clear' : 'सफा गर्नुहोस्'}
-                  <span className="block text-xs opacity-90">{isEnglishMode ? '(सफा गर्नुहोस्)' : '(Clear)'}</span>
+                  <span className="block text-[10px] md:text-xs opacity-90">{isEnglishMode ? '(सफा गर्नुहोस्)' : '(Clear)'}</span>
                 </button>
                 <button 
                   onClick={checkDrawingLocally} 
                   disabled={isChecking}
-                  className={`flex-1 py-4 bg-gradient-to-br from-emerald-400 to-emerald-600 text-white rounded-2xl font-black text-lg shadow-lg active:scale-95 hover:shadow-emerald-500/50 transition ${isChecking ? 'opacity-70' : ''}`}
+                  className={`flex-1 py-3 md:py-4 bg-gradient-to-br from-emerald-400 to-emerald-600 text-white rounded-2xl font-black text-sm md:text-lg shadow-lg active:scale-95 hover:shadow-emerald-500/50 transition ${isChecking ? 'opacity-70' : ''}`}
                 >
                   {isChecking ? (isEnglishMode ? 'Checking...' : 'जाँच गर्दै...') : (isEnglishMode ? 'Check!' : 'जाँच गर्नुहोस्!')}
-                  <span className="block text-xs opacity-90">{isChecking ? '' : (isEnglishMode ? '(जाँच गर्नुहोस्!)' : '(Check!)')}</span>
+                  <span className="block text-[10px] md:text-xs opacity-90">{isChecking ? '' : (isEnglishMode ? '(जाँच गर्नुहोस्!)' : '(Check!)')}</span>
                 </button>
               </div>
             </div>
+
+            {/* Picture */}
+            {selectedExample && (
+              <div className="bg-white/90 backdrop-blur-md p-4 md:p-6 rounded-3xl shadow-xl border border-purple-100 flex flex-col items-center">
+                <h3 className="text-sm md:text-lg font-black text-purple-600 mb-3 md:mb-4">
+                  {isEnglishMode ? 'Picture' : 'चित्र'}
+                  <span className="block text-[10px] md:text-xs text-purple-400">
+                    {isEnglishMode ? '(चित्र)' : '(Picture)'}
+                  </span>
+                </h3>
+                <div className="w-full max-w-sm aspect-square bg-slate-50 rounded-2xl overflow-hidden shadow-lg border-4 border-purple-100 relative">
+                  <img
+                    src={exampleImageSrc}
+                    alt={selectedExample.english}
+                    onError={handleImageError}
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2">
+                    <button
+                      onClick={() => playEnglishWordSound(selectedExample)}
+                      className="bg-white/95 backdrop-blur-sm px-4 py-2 rounded-full shadow-lg font-bold text-xs md:text-sm text-blue-600 flex items-center gap-1.5 border-2 border-blue-200 hover:border-blue-400 active:scale-95 transition-all"
+                    >
+                      {isEnglishMode ? 'English' : 'अंग्रेजी'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Sound Mixer - slick buttons */}
-        {selectedLetter.type === 'Consonant' && selectedLetter.combos && !selectedExample && (
+        {selectedLetter.type === 'Consonant' && selectedLetter.combos && (
           <div className="mt-10 bg-white/90 backdrop-blur-md p-8 rounded-3xl shadow-xl border border-pink-100">
-            <h3 className="text-2xl font-black text-pink-600 mb-6 text-center">
-              {isEnglishMode ? 'Sound Mixer' : 'ध्वनि मिक्सर'}
+            <button
+              onClick={() => playComboGroup(selectedLetter.combos)}
+              disabled={isComboGroupPlaying}
+              className={`w-full text-2xl font-black text-pink-600 mb-6 text-center active:scale-[0.99] transition ${isComboGroupPlaying ? 'opacity-70 cursor-not-allowed' : 'hover:text-pink-700'}`}
+            >
+              {isComboGroupPlaying
+                ? (isEnglishMode ? 'Playing Sound Mixer...' : 'ध्वनि मिक्सर बज्दै...')
+                : (isEnglishMode ? 'Sound Mixer' : 'ध्वनि मिक्सर')}
               <span className="block text-sm text-pink-400">{isEnglishMode ? '(ध्वनि मिक्सर) 🧪' : '(Sound Mixer) 🧪'}</span>
-            </h3>
-            <div className="grid grid-cols-5 sm:grid-cols-7 lg:grid-cols-11 gap-4">
+            </button>
+            <div className="grid grid-cols-5 sm:grid-cols-7 lg:grid-cols-11 gap-2 md:gap-4">
               {selectedLetter.combos.map((combo, idx) => (
-                <button key={idx} onClick={() => speakText(combo.char, userProfile.voice)} className="bg-gradient-to-br from-pink-300 to-pink-400 p-4 rounded-2xl flex flex-col items-center justify-center hover:from-pink-400 hover:to-pink-500 transition active:scale-95 shadow-lg">
-                  <span className="text-3xl font-black text-white drop-shadow">{combo.char}</span>
-                  <span className="text-xs text-white/90 font-black uppercase mt-1 drop-shadow">{combo.sound}</span>
+                <button key={idx} onClick={() => playComboSound(combo.char)} className={`bg-gradient-to-br from-pink-300 to-pink-400 p-1.5 md:p-4 rounded-xl md:rounded-2xl flex flex-col items-center justify-center hover:from-pink-400 hover:to-pink-500 transition active:scale-95 shadow-lg ${playingComboChar === combo.char ? 'ring-2 md:ring-4 ring-pink-500 scale-105 shadow-xl' : ''}`}>
+                  <span className="text-xl md:text-3xl font-black text-white drop-shadow">{combo.char}</span>
+                  <span className="text-[8px] md:text-xs text-white/90 font-black uppercase mt-0.5 md:mt-1 drop-shadow">{combo.sound}</span>
                 </button>
               ))}
             </div>
@@ -502,9 +638,15 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
           return (
             <section key={type}>
               <div className="flex items-center gap-4 mb-6">
-                <span className={`bg-${color}-500 text-white px-6 py-1.5 rounded-full font-black shadow-md text-sm border-b-4 border-${color}-700`}>
-                  {type}s
-                </span>
+                <button
+                  onClick={() => playLetterGroup(type as 'Vowel' | 'Consonant')}
+                  disabled={isGroupPlaying}
+                  className={`bg-${color}-500 text-white px-6 py-1.5 rounded-full font-black shadow-md text-sm border-b-4 border-${color}-700 active:scale-95 transition ${isGroupPlaying ? 'opacity-70 cursor-not-allowed' : 'hover:brightness-110'}`}
+                >
+                  {isGroupPlaying && groupPlayingType === type
+                    ? (isEnglishMode ? `Playing ${type}s...` : `${type === 'Vowel' ? 'स्वर' : 'व्यञ्जन'} बज्दै...`)
+                    : `${type}s`}
+                </button>
                 <div className={`h-1.5 bg-${color}-100 flex-1 rounded-full shadow-inner`}></div>
               </div>
               <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-3 md:gap-4">
@@ -512,7 +654,7 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
                   <button
                     key={i}
                     onClick={() => handleSelect(l)}
-                    className={`bg-white aspect-square rounded-[25px] md:rounded-[35px] shadow-sm border-b-4 border-${color}-50 flex flex-col items-center justify-center transition-all transform hover:scale-110 active:translate-y-2 group relative ${lastClickedChar === l.char ? 'animate-card-pop' : ''}`}
+                    className={`bg-white aspect-square rounded-[25px] md:rounded-[35px] shadow-sm border-b-4 border-${color}-50 flex flex-col items-center justify-center transition-all transform hover:scale-110 active:translate-y-2 group relative ${lastClickedChar === l.char ? 'animate-card-pop' : ''} ${playingChar === l.char ? `ring-4 ring-${color}-400 shadow-xl scale-110` : ''}`}
                   >
                     {cachedSounds.has(l.char) && <div className="absolute -top-1 -right-1 text-lg drop-shadow-sm animate-bounce">✨</div>}
                     <span className="text-3xl md:text-4xl font-black text-gray-800 leading-none">{l.char}</span>

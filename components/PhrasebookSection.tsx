@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { fetchPhrases, speakText, translatePhrase, stopAllAudio, triggerHaptic } from '../services/geminiService';
+import { fetchPhrases, speakText, translatePhrase, stopAllAudio, triggerHaptic, resolveVoiceId } from '../services/geminiService';
 import { LanguageCode, PhraseData, UserProfile } from '../types';
 
 interface Props {
@@ -16,6 +16,7 @@ export const PhrasebookSection: React.FC<Props> = ({ language, userProfile, show
     const [batchLoading, setBatchLoading] = useState(false);
     const [translateInput, setTranslateInput] = useState('');
     const [isTranslating, setIsTranslating] = useState(false);
+    const voiceId = resolveVoiceId(userProfile);
 
     useEffect(() => {
         const load = async () => {
@@ -30,7 +31,7 @@ export const PhrasebookSection: React.FC<Props> = ({ language, userProfile, show
 
     const handlePlay = (text: string) => {
         stopAllAudio();
-        speakText(text, userProfile.voice);
+        speakText(text, voiceId);
         triggerHaptic(5);
         addXp(2);
     };

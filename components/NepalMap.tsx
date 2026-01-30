@@ -4,7 +4,7 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { LanguageCode, LANGUAGES, TravelDiscovery } from '../types';
-import { speakText, triggerHaptic, generateTravelImage } from '../services/geminiService';
+import { speakText, triggerHaptic, generateTravelImage, resolveVoiceId } from '../services/geminiService';
 
 interface Props {
     language: LanguageCode;
@@ -14,6 +14,7 @@ interface Props {
 }
 
 export const NepalMap: React.FC<Props> = ({ language, userProfile, addXp, showTranslation }) => {
+    const voiceId = resolveVoiceId(userProfile);
     const [selectedPlace, setSelectedPlace] = useState<TravelDiscovery | null>(null);
     const [placeImage, setPlaceImage] = useState<string | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
@@ -26,7 +27,7 @@ export const NepalMap: React.FC<Props> = ({ language, userProfile, addXp, showTr
         setPlaceImage(null);
         setIsGenerating(true);
         
-        speakText(place.titleNative, userProfile.voice);
+        speakText(place.titleNative, voiceId);
         
         const img = await generateTravelImage(place.titleEn, 'Nepal');
         setPlaceImage(img);
@@ -130,7 +131,7 @@ export const NepalMap: React.FC<Props> = ({ language, userProfile, addXp, showTr
                             {showTranslation ? selectedPlace.detailsEn : selectedPlace.detailsNative}
                         </p>
                         
-                        <button onClick={() => speakText(showTranslation ? selectedPlace.detailsEn : selectedPlace.detailsNative, userProfile.voice)} className="mt-5 w-full bg-red-600 text-white py-3 rounded-xl font-black shadow-md hover:scale-105 active:translate-y-1 transition text-xs">🔊 Hear Description</button>
+                        <button onClick={() => speakText(showTranslation ? selectedPlace.detailsEn : selectedPlace.detailsNative, voiceId)} className="mt-5 w-full bg-red-600 text-white py-3 rounded-xl font-black shadow-md hover:scale-105 active:translate-y-1 transition text-xs">🔊 Hear Description</button>
                     </div>
                 )}
                 

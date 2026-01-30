@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { triggerHaptic, speakText } from '../services/geminiService';
+import { triggerHaptic, speakText, resolveVoiceId } from '../services/geminiService';
 import { LanguageCode, UserProfile, LANGUAGES } from '../types';
 
 interface Props {
@@ -59,6 +59,7 @@ export const PuzzleSection: React.FC<Props> = ({ language, userProfile, showTran
     const [matchingScore, setMatchingScore] = useState(0);
 
     const langConfig = LANGUAGES.find(l => l.code === language)!;
+    const voiceId = resolveVoiceId(userProfile);
 
     // Initialize quiz questions
     useEffect(() => {
@@ -197,7 +198,7 @@ export const PuzzleSection: React.FC<Props> = ({ language, userProfile, showTran
 
         triggerHaptic(5);
         const item = deck.find(d => d.id === id)!;
-        speakText(item.text, userProfile.voice);
+        speakText(item.text, voiceId);
 
         if (selectedId === null) {
             setSelectedId(id);

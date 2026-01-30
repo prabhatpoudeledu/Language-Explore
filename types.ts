@@ -384,9 +384,7 @@ export interface VoiceOption {
 
 export const VOICES: VoiceOption[] = [
   { id: 'Puck', label: 'Playful Boy', gender: 'male', icon: '👦' },
-  { id: 'Fenrir', label: 'Deep Voice', gender: 'male', icon: '👨' },
-  { id: 'Kore', label: 'Kind Girl', gender: 'female', icon: '👧' },
-  { id: 'Zephyr', label: 'Soft Voice', gender: 'female', icon: '👩' }
+  { id: 'Kore', label: 'Playful Girl', gender: 'female', icon: '👧' }
 ];
 
 export interface VowelCombo {

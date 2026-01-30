@@ -6,7 +6,7 @@ import { WordBuilder } from './components/WordBuilder';
 import { CultureHub } from './components/CultureHub';
 import { PhrasebookSection } from './components/PhrasebookSection';
 import { VoicePractice } from './components/VoicePractice';
-import { initializeLanguageSession, fetchWordOfTheDay, fetchFunFact, speakText, triggerHaptic, stopAllAudio, generateTravelImage, isVoiceLimited, subscribeToBakery, BakeryStatus, unlockAudio, getAudioState } from './services/geminiService';
+import { initializeLanguageSession, fetchWordOfTheDay, fetchFunFact, speakText, triggerHaptic, stopAllAudio, generateTravelImage, isVoiceLimited, subscribeToBakery, BakeryStatus, unlockAudio, getAudioState, resolveVoiceId } from './services/geminiService';
 
 
 const SoundBakery: React.FC = () => {
@@ -114,7 +114,7 @@ const App: React.FC = () => {
   // Automatically process Google Sign-In when credential is received
   useEffect(() => {
     if (googleCredential && state === AppState.LOGIN) {
-      handleGoogleLogin();
+      handleGoogleLogin(googleCredential);
     }
   }, [googleCredential, state]);
 
@@ -171,6 +171,29 @@ const App: React.FC = () => {
     // Check audio state
     if (getAudioState() === 'running') setAudioUnlocked(true);
   }, []); // Only run once on mount
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') stopAllAudio();
+    };
+
+    const handlePageHide = () => stopAllAudio();
+    const handleBeforeUnload = () => stopAllAudio();
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', handlePageHide);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', handlePageHide);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, []);
+
+  useEffect(() => {
+    stopAllAudio();
+  }, [state]);
 
   useEffect(() => {
     if (state === AppState.HOME && userProfile) {
@@ -231,7 +254,14 @@ const App: React.FC = () => {
       triggerHaptic(10);
   };
 
-  const handleGoogleLogin = async () => {
+  const decodeGoogleJwt = (token: string) => {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64.padEnd(base64.length + (4 - (base64.length % 4)) % 4, '=');
+    return JSON.parse(atob(padded));
+  };
+
+  const handleGoogleLogin = async (credential?: string) => {
     setAuthError('');
     await handleUnlockAudio();
 
@@ -240,7 +270,9 @@ const App: React.FC = () => {
     triggerHaptic(15);
 
     // Check if we have a Google credential
-    if (!googleCredential) {
+    const token = credential || googleCredential;
+
+    if (!token) {
       // This shouldn't happen since this function is called when credential is set
       setAuthError('Google Sign-In failed. Please try again.');
       setIsAuthLoading(false);
@@ -249,11 +281,15 @@ const App: React.FC = () => {
 
     try {
       // Decode the JWT token to get user information
-      const payload = JSON.parse(atob(googleCredential.split('.')[1]));
+      const payload = decodeGoogleJwt(token);
       const googleEmail = payload.email;
       const googleName = payload.name;
       const googleId = payload.sub;
       const googlePicture = payload.picture;
+
+      if (!googleEmail || !googleId) {
+        throw new Error('Missing required profile info from Google token.');
+      }
 
       const db = getDb();
       let found = db.find(a => a.googleId === googleId);
@@ -293,7 +329,7 @@ const App: React.FC = () => {
     setCurrentLang('np');
     setIsLoading(true);
     setLoadingP(0);
-    await initializeLanguageSession('np', p.voice || 'Kore', (msg, p) => { setLoadingMsg(msg); setLoadingP(p); });
+    await initializeLanguageSession('np', resolveVoiceId(p), (msg, p) => { setLoadingMsg(msg); setLoadingP(p); });
     setIsLoading(false);
     setState(AppState.HOME);
     setFunFact('Tap for a cool fact!');

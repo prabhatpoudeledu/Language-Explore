@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { GoogleGenAI } from "@google/genai";
-import { speakText, triggerHaptic, stopAllAudio } from '../services/geminiService';
+import { speakText, triggerHaptic, stopAllAudio, resolveVoiceId } from '../services/geminiService';
 // Fix: Added LanguageCode import and updated Props to use it instead of 'np' literal
 import { UserProfile, LanguageCode, WordChallenge, PhraseData } from '../types';
 import { STATIC_WORDS, STATIC_PHRASES } from '../constants';
@@ -30,6 +30,7 @@ export const VoicePractice: React.FC<Props> = ({ language, userProfile, addXp })
     const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('easy');
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const chunksRef = useRef<Blob[]>([]);
+    const voiceId = resolveVoiceId(userProfile);
 
     // Generate random challenge from constants
     const generateRandomChallenge = (): VoiceChallenge => {
@@ -189,7 +190,7 @@ export const VoicePractice: React.FC<Props> = ({ language, userProfile, addXp })
                 const baseXp = currentChallenge?.difficulty === 'hard' ? 40 : currentChallenge?.difficulty === 'medium' ? 30 : 20;
                 const streakBonus = Math.min(streakCount * 5, 25); // Max 25 bonus XP
                 addXp(baseXp + streakBonus);
-                speakText("Brilliant! You sounds like a pro!", userProfile.voice);
+                speakText("Brilliant! You sounds like a pro!", voiceId);
             } else {
                 setStreakCount(0);
                 addXp(10);
@@ -268,7 +269,7 @@ export const VoicePractice: React.FC<Props> = ({ language, userProfile, addXp })
                             <button
                                 onClick={() => {
                                     stopAllAudio();
-                                    speakText(currentChallenge.text, userProfile.voice);
+                                    speakText(currentChallenge.text, voiceId);
                                     triggerHaptic(5);
                                     addXp(2);
                                 }}

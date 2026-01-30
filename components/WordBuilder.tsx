@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { fetchAlphabet, speakText, stopAllAudio, triggerHaptic } from '../services/geminiService';
+import { fetchAlphabet, speakText, stopAllAudio, triggerHaptic, resolveVoiceId } from '../services/geminiService';
 import { LanguageCode, WordChallenge, UserProfile, LANGUAGES, ExampleWord } from '../types';
 
 interface Props {
@@ -23,6 +23,7 @@ export const WordBuilder: React.FC<Props> = ({ language, userProfile, showTransl
   const langConfig = LANGUAGES.find(l => l.code === language)!;
 
   const isEnglishMode = showTranslation;
+    const voiceId = resolveVoiceId(userProfile);
 
   const shuffleArray = (array: string[]): string[] => {
     const shuffled = [...array];
@@ -98,13 +99,13 @@ export const WordBuilder: React.FC<Props> = ({ language, userProfile, showTransl
     const formed = userSelection.join('');
     if (formed === current.word) {
         setIsCorrect(true);
-        speakText(isEnglishMode ? `Correct! It's spelled ${current.word}.` : `सही! यो ${current.word} लेखिन्छ।`, userProfile.voice);
+        speakText(isEnglishMode ? `Correct! It's spelled ${current.word}.` : `सही! यो ${current.word} लेखिन्छ।`, voiceId);
         triggerHaptic([10, 5, 10]);
         addXp(10);
         completeWord(current.word);
     } else {
         setIsCorrect(false);
-        speakText(isEnglishMode ? "That's not quite right. Try again!" : "त्यो ठीक भएन। फेरि प्रयास गर्नुहोस्!", userProfile.voice);
+        speakText(isEnglishMode ? "That's not quite right. Try again!" : "त्यो ठीक भएन। फेरि प्रयास गर्नुहोस्!", voiceId);
         setTimeout(() => setIsCorrect(null), 1000);
         setUserSelection([]);
         setShowNepali(false);
@@ -195,7 +196,7 @@ export const WordBuilder: React.FC<Props> = ({ language, userProfile, showTransl
                     {/* Buttons outside the picture */}
                     <div className="flex gap-3">
                         <button 
-                            onClick={() => speakText(current.word, userProfile.voice)}
+                            onClick={() => speakText(current.word, voiceId)}
                             className="flex items-center gap-1.5 bg-white/95 backdrop-blur-sm text-emerald-600 px-4 py-2 rounded-xl font-bold shadow-md border-b-2 border-emerald-50 hover:scale-105 transition-all active:translate-y-0.5 text-sm"
                         >
                             🔊 {isEnglishMode ? 'Listen' : 'सुन्नुहोस्'}

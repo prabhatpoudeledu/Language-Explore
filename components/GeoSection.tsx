@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { speakText, stopAllAudio, generateTravelImage, triggerHaptic } from '../services/geminiService';
+import { speakText, stopAllAudio, generateTravelImage, triggerHaptic, resolveVoiceId } from '../services/geminiService';
 import { TravelDiscovery, LanguageCode, UserProfile, LANGUAGES } from '../types';
 
 interface Props {
@@ -15,6 +15,7 @@ export const GeoSection: React.FC<Props> = ({ language, userProfile, showTransla
   const [generatingImages, setGeneratingImages] = useState<Record<string, boolean>>({});
 
   const langConfig = LANGUAGES.find(l => l.code === language)!;
+    const voiceId = resolveVoiceId(userProfile);
 
   useEffect(() => {
     // Check local storage for pre-cached images from initialize phase
@@ -36,7 +37,7 @@ export const GeoSection: React.FC<Props> = ({ language, userProfile, showTransla
   const handleRead = (item: TravelDiscovery) => {
       stopAllAudio();
       const text = `${item.titleNative}. ${showTranslation ? item.descriptionEn : item.descriptionNative}`;
-      speakText(text, userProfile.voice);
+    speakText(text, voiceId);
       addXp(2);
   };
 

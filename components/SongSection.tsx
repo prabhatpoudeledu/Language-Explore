@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { fetchSongsByCategory, speakText } from '../services/geminiService';
+import { fetchSongsByCategory, speakText, resolveVoiceId } from '../services/geminiService';
 import { LanguageCode, SongData, UserProfile } from '../types';
 
 interface Props {
@@ -22,6 +22,7 @@ export const SongSection: React.FC<Props> = ({ language, userProfile, showTransl
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [songs, setSongs] = useState<SongData[]>([]);
   const [loading, setLoading] = useState(false);
+    const voiceId = resolveVoiceId(userProfile);
 
   useEffect(() => {
     setSelectedCategory(null);
@@ -41,7 +42,7 @@ export const SongSection: React.FC<Props> = ({ language, userProfile, showTransl
 
   const handleReadLyrics = (song: SongData) => {
       // Manual trigger for reading lyrics
-      speakText(song.lyricsOriginal || '', userProfile.voice);
+    speakText(song.lyricsOriginal || '', voiceId);
       addXp(2);
   };
 

@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type, Modality } from "@google/genai";
-import { LetterData, WordChallenge, PhraseData, LanguageCode, LANGUAGES, WordOfTheDayData, AccountData, UserProfile, SongData } from '../types';
+import { UserProfile, VOICES, LetterData, WordChallenge, PhraseData, LanguageCode, LANGUAGES, WordOfTheDayData, AccountData, SongData } from '../types';
 import { STATIC_ALPHABET, STATIC_WORDS, STATIC_PHRASES } from '../constants';
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -53,9 +53,11 @@ export const getAudioVault = () => {
     } catch(e) { return {}; }
 };
 
-const saveToAudioVault = (text: string, base64: string) => {
+const buildAudioKey = (text: string, voice: string) => `${voice}__${text}`;
+
+const saveToAudioVault = (key: string, base64: string) => {
     const vault = getAudioVault();
-    vault[text] = base64;
+    vault[key] = base64;
     try {
         localStorage.setItem(AUDIO_VAULT_KEY, JSON.stringify(vault));
     } catch (e) {
@@ -179,7 +181,30 @@ class AudioManager {
 }
 
 const audioManager = new AudioManager();
-export const stopAllAudio = () => audioManager.stop();
+const activeHtmlAudios = new Set<HTMLAudioElement>();
+
+export const registerHtmlAudio = (audio: HTMLAudioElement) => {
+    activeHtmlAudios.add(audio);
+};
+
+export const unregisterHtmlAudio = (audio: HTMLAudioElement) => {
+    activeHtmlAudios.delete(audio);
+};
+
+const stopHtmlAudio = () => {
+    activeHtmlAudios.forEach(audio => {
+        try {
+            audio.pause();
+            audio.currentTime = 0;
+        } catch (e) {}
+    });
+    activeHtmlAudios.clear();
+};
+
+export const stopAllAudio = () => {
+    stopHtmlAudio();
+    audioManager.stop();
+};
 export const isAudioBusy = () => audioManager.isBusy;
 export const isVoiceLimited = () => audioManager.isRateLimited;
 export const unlockAudio = () => audioManager.unlock();
@@ -217,28 +242,147 @@ const generateContentWithRetry = async (params: any, retries = 0): Promise<any> 
     }
 };
 
-const browserSpeak = (text: string) => {
-    if (!window.speechSynthesis) return;
-    const utterance = new SpeechSynthesisUtterance(text);
-    if (text.match(/[\u0900-\u097F]/)) utterance.lang = 'hi-IN';
-    else utterance.lang = 'en-US';
-    utterance.rate = 0.85;
-    window.speechSynthesis.speak(utterance);
+const browserSpeak = (text: string): Promise<void> => {
+    if (!window.speechSynthesis) return Promise.resolve();
+    return new Promise(resolve => {
+        const utterance = new SpeechSynthesisUtterance(text);
+        if (text.match(/[\u0900-\u097F]/)) utterance.lang = 'hi-IN';
+        else utterance.lang = 'en-US';
+        utterance.rate = 0.7;
+        utterance.pitch = 0.95;
+        utterance.onend = () => resolve();
+        utterance.onerror = () => resolve();
+        window.speechSynthesis.speak(utterance);
+    });
+};
+
+const SOUND_BASE_PATH = '/assets/voices/sound';
+
+const getVoiceGender = (voiceName: string) => {
+    return VOICES.find(v => v.id === voiceName)?.gender || 'female';
+};
+
+const slugifySoundName = (text: string) => {
+    const cleaned = text
+        .toLowerCase()
+        .replace(/[^a-z0-9\s_-]/g, '')
+        .replace(/\s+/g, '_')
+        .replace(/_+/g, '_')
+        .replace(/^_+|_+$/g, '');
+    return cleaned;
+};
+
+const tryPlayLocalSoundBySlug = (rawSlug: string, voiceName: string, preferEnglishVariant: boolean): Promise<boolean> => {
+    const slug = slugifySoundName(rawSlug);
+    if (!slug) return Promise.resolve(false);
+
+    const gender = getVoiceGender(voiceName);
+    const candidates = preferEnglishVariant
+        ? [`${slug}_english_${gender}.mp3`, `${slug}_${gender}.mp3`]
+        : [`${slug}_${gender}.mp3`, `${slug}_english_${gender}.mp3`];
+
+    return new Promise(resolve => {
+        let index = 0;
+        let finished = false;
+
+        const attempt = () => {
+            if (index >= candidates.length || finished) return resolve(false);
+            const url = `${SOUND_BASE_PATH}/${candidates[index++]}`;
+            const audio = new Audio(url);
+            registerHtmlAudio(audio);
+
+            const fail = () => {
+                if (finished) return;
+                attempt();
+            };
+
+            const finishSuccess = () => {
+                if (finished) return;
+                finished = true;
+                unregisterHtmlAudio(audio);
+                resolve(true);
+            };
+
+            audio.oncanplaythrough = () => {
+                if (finished) return;
+                audio.play().catch(() => {
+                    if (finished) return;
+                    finished = true;
+                    unregisterHtmlAudio(audio);
+                    resolve(false);
+                });
+            };
+            audio.onended = finishSuccess;
+            audio.onpause = finishSuccess;
+            audio.onerror = () => {
+                unregisterHtmlAudio(audio);
+                fail();
+            };
+            audio.load();
+        };
+
+        attempt();
+    });
+};
+
+export const tryPlayLocalSound = (text: string, voiceName: string): Promise<boolean> => {
+    const isNepali = /[\u0900-\u097F]/.test(text);
+    return tryPlayLocalSoundBySlug(text, voiceName, !isNepali);
+};
+
+export const tryPlayLocalSoundWithTransliteration = (transliteration: string, voiceName: string, preferEnglishVariant: boolean): Promise<boolean> => {
+    return tryPlayLocalSoundBySlug(transliteration, voiceName, preferEnglishVariant);
+};
+
+const VOICE_PAIR_MAP: Record<string, string> = {
+    Puck: 'Kore',
+    Kore: 'Puck'
+};
+
+export const resolveVoiceId = (profile?: UserProfile | null): string => {
+    if (!profile) return 'Kore';
+
+    const selected = VOICES.find(v => v.id === profile.voice)?.id || 'Kore';
+    const selectedGender = VOICES.find(v => v.id === selected)?.gender;
+
+    const avatarGender = profile.avatar === '👦'
+        ? 'male'
+        : profile.avatar === '👧'
+            ? 'female'
+            : profile.gender;
+
+    if (selectedGender && avatarGender && selectedGender !== avatarGender) {
+        return VOICE_PAIR_MAP[selected] || selected;
+    }
+
+    return selected;
 };
 
 export const speakText = async (text: string, voiceName: string = 'Kore'): Promise<void> => {
   // Always try to wake context first
   await audioManager.unlock();
+
+    if (!text || text.trim().length === 0) return;
+
+    const playedLocal = await tryPlayLocalSound(text, voiceName);
+    if (playedLocal) return;
+
+    const audioKey = buildAudioKey(text, voiceName);
   
   const vault = getAudioVault();
-  if (vault[text] && vault[text].length > 100) return await audioManager.play(vault[text]);
-  if (audioManager.isRateLimited) { browserSpeak(text); return; }
+    if (vault[audioKey] && vault[audioKey].length > 100) return await audioManager.play(vault[audioKey]);
+    if (audioManager.isRateLimited) { await browserSpeak(text); return; }
 
   stopAllAudio();
   try {
-    const response = await generateContentWithRetry({
+        const isNepali = /[\u0900-\u097F]/.test(text);
+        const prompt = isNepali
+            ? `Pronounce slowly and gently in Nepali with clear syllables: ${text}`
+            : `Pronounce slowly and gently in English with clear syllables: ${text}`;
+
+        const response = await generateContentWithRetry({
       model: "gemini-2.5-flash-preview-tts",
-      contents: [{ parts: [{ text: `Say clearly: ${text}` }] }],
+            contents: [{ parts: [{ text: prompt }] }],
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceName } } },
@@ -246,10 +390,10 @@ export const speakText = async (text: string, voiceName: string = 'Kore'): Promi
     });
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     if (base64Audio) { 
-        saveToAudioVault(text, base64Audio); 
+                saveToAudioVault(audioKey, base64Audio); 
         return await audioManager.play(base64Audio); 
     }
-  } catch (error: any) { browserSpeak(text); }
+    } catch (error: any) { await browserSpeak(text); }
 };
 
 export type BakeryStatus = 'idle' | 'baking' | 'ready';
@@ -270,25 +414,44 @@ export const subscribeToBakery = (callback: (status: BakeryStatus) => void) => {
     };
 };
 
-export const downloadLetterSound = async (letter: string, voice: string): Promise<boolean> => {
+const downloadTextSound = async (text: string, voice: string, prompt: string): Promise<boolean> => {
     const vault = getAudioVault();
-    if (vault[letter]) return true; 
+    const audioKey = buildAudioKey(text, voice);
+    if (vault[audioKey]) return true;
+
     try {
         const response = await generateContentWithRetry({
-          model: "gemini-2.5-flash-preview-tts",
-          contents: [{ parts: [{ text: `The phonic sound of letter ${letter}` }] }],
-          config: {
-            responseModalities: [Modality.AUDIO],
-            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
-          },
+            model: "gemini-2.5-flash-preview-tts",
+            contents: [{ parts: [{ text: prompt }] }],
+            config: {
+                responseModalities: [Modality.AUDIO],
+                speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
+            },
         });
         const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-        if (base64Audio) { saveToAudioVault(letter, base64Audio); return true; }
-    } catch (e) { return false; }
+        if (base64Audio) {
+            saveToAudioVault(audioKey, base64Audio);
+            return true;
+        }
+    } catch (e) {
+        return false;
+    }
     return false;
 };
 
-let downloadQueue: { letter: string; voice: string }[] = [];
+export const downloadLetterSound = async (letter: string, voice: string): Promise<boolean> => {
+    return downloadTextSound(letter, voice, `Pronounce the Nepali letter sound: ${letter}`);
+};
+
+const downloadPhraseSound = async (phrase: string, voice: string): Promise<boolean> => {
+    const isNepali = /[\u0900-\u097F]/.test(phrase);
+    const prompt = isNepali
+        ? `Pronounce clearly in Nepali: ${phrase}`
+        : `Pronounce clearly in English: ${phrase}`;
+    return downloadTextSound(phrase, voice, prompt);
+};
+
+let downloadQueue: { text: string; voice: string; type: 'letter' | 'phrase' }[] = [];
 let isProcessingQueue = false;
 
 const processDownloadQueue = async () => {
@@ -300,7 +463,9 @@ const processDownloadQueue = async () => {
         if (audioManager.isRateLimited) break;
         const task = downloadQueue[0];
         try {
-            const success = await downloadLetterSound(task.letter, task.voice);
+            const success = task.type === 'letter'
+                ? await downloadLetterSound(task.text, task.voice)
+                : await downloadPhraseSound(task.text, task.voice);
             if (success) downloadQueue.shift();
             else await wait(5000);
         } catch (e) { await wait(10000); }
@@ -313,8 +478,21 @@ const processDownloadQueue = async () => {
 export const preCacheAlphabet = (lang: LanguageCode, voice: string) => {
     const alphabet = STATIC_ALPHABET[lang] || [];
     const vault = getAudioVault();
-    const missing = alphabet.filter(l => !vault[l.char]).map(l => ({ letter: l.char, voice }));
-    downloadQueue = [...missing];
+    const missing = alphabet
+        .filter(l => !vault[buildAudioKey(l.char, voice)])
+        .map(l => ({ text: l.char, voice, type: 'letter' as const }));
+    downloadQueue = [...missing, ...downloadQueue];
+    if (!isProcessingQueue) processDownloadQueue();
+};
+
+export const preCachePhrases = (lang: LanguageCode, voice: string, limit: number = 10) => {
+    const phrases = STATIC_PHRASES[lang] || [];
+    const vault = getAudioVault();
+    const missing = phrases
+        .slice(0, limit)
+        .filter(p => !vault[buildAudioKey(p.native, voice)])
+        .map(p => ({ text: p.native, voice, type: 'phrase' as const }));
+    downloadQueue = [...missing, ...downloadQueue];
     if (!isProcessingQueue) processDownloadQueue();
 };
 
@@ -325,6 +503,7 @@ export const initializeLanguageSession = async (lang: LanguageCode, voice: strin
     onProgress("Setting up the Cabin...", 60);
     await wait(300);
     preCacheAlphabet(lang, voice);
+    preCachePhrases(lang, voice);
     onProgress("Ready for takeoff!", 100);
     await wait(200);
 };
@@ -411,8 +590,23 @@ export const fetchFunFact = async (lang: LanguageCode): Promise<string> => {
     } catch (e) { return "Discovery is magic!"; }
 };
 
+const normalizeSoundPath = (path?: string | null) => {
+    if (!path) return path || '';
+    return path.replace(/^\/assets\/voice\//, '/assets/voices/');
+};
+
 export const fetchAlphabet = async (lang: LanguageCode): Promise<LetterData[]> => {
-    return STATIC_ALPHABET[lang] || [];
+    const alphabet = STATIC_ALPHABET[lang] || [];
+    return alphabet.map(letter => ({
+        ...letter,
+        letterNepaliAudio: normalizeSoundPath(letter.letterNepaliAudio),
+        letterEnglishAudio: normalizeSoundPath(letter.letterEnglishAudio),
+        examples: (letter.examples || []).map(example => ({
+            ...example,
+            nepaliAudio: normalizeSoundPath(example.nepaliAudio),
+            englishAudio: normalizeSoundPath(example.englishAudio)
+        }))
+    }));
 };
 
 export const translatePhrase = async (text: string, lang: LanguageCode): Promise<PhraseData | null> => {
