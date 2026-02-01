@@ -147,8 +147,8 @@ class AudioManager {
         if (window.speechSynthesis) window.speechSynthesis.cancel();
     }
 
-    public async play(base64Audio: string): Promise<void> {
-        if (!base64Audio || base64Audio.length < 100) return;
+    public async play(base64Audio: string): Promise<boolean> {
+        if (!base64Audio || base64Audio.length < 100) return false;
         this.stop(); 
         this.isBusy = true;
         const ctx = this.getContext();
@@ -165,17 +165,36 @@ class AudioManager {
             source.buffer = audioBuffer;
             source.connect(ctx.destination);
             this.currentSource = source;
-            return new Promise((resolve) => {
+            return await new Promise<boolean>((resolve) => {
+                const timeout = window.setTimeout(() => {
+                    if (this.currentSource === source) {
+                        try { source.stop(); } catch (e) {}
+                        this.currentSource = null;
+                    }
+                    this.isBusy = false;
+                    console.log('[TTS] audio play timeout');
+                    resolve(false);
+                }, 4000);
+
                 source.onended = () => { 
+                    window.clearTimeout(timeout);
                     if (this.currentSource === source) this.currentSource = null; 
                     this.isBusy = false;
-                    resolve(); 
+                    resolve(true); 
                 };
-                source.start(0);
+                try {
+                    source.start(0);
+                } catch (e) {
+                    window.clearTimeout(timeout);
+                    this.isBusy = false;
+                    console.log('[TTS] audio start failed');
+                    resolve(false);
+                }
             });
         } catch (e) { 
             this.isBusy = false;
             console.error("Audio playback error", e); 
+            return false;
         }
     }
 }
@@ -250,13 +269,138 @@ const browserSpeak = (text: string): Promise<void> => {
         else utterance.lang = 'en-US';
         utterance.rate = 0.7;
         utterance.pitch = 0.95;
-        utterance.onend = () => resolve();
-        utterance.onerror = () => resolve();
+        console.log('[TTS] browserSpeak start', JSON.stringify({ lang: utterance.lang }));
+        utterance.onend = () => {
+            console.log('[TTS] browserSpeak end');
+            resolve();
+        };
+        utterance.onerror = (e) => {
+            console.log('[TTS] browserSpeak error', JSON.stringify({ error: (e as any)?.error || 'unknown' }));
+            resolve();
+        };
         window.speechSynthesis.speak(utterance);
     });
 };
 
 const SOUND_BASE_PATH = '/assets/voices/sound';
+
+const detectAudioMime = (bytes: Uint8Array): 'audio/wav' | 'audio/mpeg' | null => {
+    if (bytes.length < 4) return null;
+    const header = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
+    if (header === 'RIFF') return 'audio/wav';
+    if (header === 'ID3') return 'audio/mpeg';
+    if (bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0) return 'audio/mpeg';
+    return null;
+};
+
+const pcmToWav = (pcmBytes: Uint8Array, sampleRate: number, numChannels: number): Uint8Array => {
+    const bytesPerSample = 2;
+    const blockAlign = numChannels * bytesPerSample;
+    const byteRate = sampleRate * blockAlign;
+    const dataSize = pcmBytes.byteLength;
+    const buffer = new ArrayBuffer(44 + dataSize);
+    const view = new DataView(buffer);
+
+    const writeString = (offset: number, str: string) => {
+        for (let i = 0; i < str.length; i++) {
+            view.setUint8(offset + i, str.charCodeAt(i));
+        }
+    };
+
+    writeString(0, 'RIFF');
+    view.setUint32(4, 36 + dataSize, true);
+    writeString(8, 'WAVE');
+    writeString(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, byteRate, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, bytesPerSample * 8, true);
+    writeString(36, 'data');
+    view.setUint32(40, dataSize, true);
+
+    new Uint8Array(buffer, 44).set(pcmBytes);
+    return new Uint8Array(buffer);
+};
+
+const tryPlayBase64HtmlAudio = async (base64Audio: string): Promise<boolean> => {
+    try {
+        const bytes = decode(base64Audio);
+        let audioBytes: Uint8Array = bytes as Uint8Array;
+        let mime = detectAudioMime(bytes);
+        if (!mime) {
+            console.log('[TTS] html audio mime fallback to pcm');
+            audioBytes = pcmToWav(new Uint8Array(bytes), 24000, 1) as Uint8Array;
+            mime = 'audio/wav';
+        }
+        console.log('[TTS] html audio mime', JSON.stringify({ mime }));
+
+        return await new Promise<boolean>((resolve) => {
+            const audioBuffer = audioBytes.buffer.slice(audioBytes.byteOffset, audioBytes.byteOffset + audioBytes.byteLength) as ArrayBuffer;
+            const blob = new Blob([audioBuffer], { type: mime });
+            const url = URL.createObjectURL(blob);
+            const audio = new Audio(url);
+            registerHtmlAudio(audio);
+
+            const cleanup = (result: boolean) => {
+                try { URL.revokeObjectURL(url); } catch (e) {}
+                unregisterHtmlAudio(audio);
+                resolve(result);
+            };
+
+            const timeout = window.setTimeout(() => {
+                console.log('[TTS] html audio timeout');
+                cleanup(false);
+            }, 4000);
+
+            audio.onended = () => {
+                window.clearTimeout(timeout);
+                cleanup(true);
+            };
+            audio.onerror = () => {
+                window.clearTimeout(timeout);
+                console.log('[TTS] html audio error');
+                cleanup(false);
+            };
+
+            audio.oncanplaythrough = () => {
+                audio.play().catch(() => {
+                    window.clearTimeout(timeout);
+                    console.log('[TTS] html audio play failed');
+                    cleanup(false);
+                });
+            };
+
+            audio.load();
+        });
+    } catch (e) {
+        return false;
+    }
+};
+
+const playWithTimeout = async (base64Audio: string, label: string): Promise<boolean> => {
+    const timeoutMs = 4500;
+    const timeoutPromise = new Promise<boolean>((resolve) => {
+        window.setTimeout(() => {
+            console.log('[TTS] play timeout', JSON.stringify({ label }));
+            resolve(false);
+        }, timeoutMs);
+    });
+
+    const playPromise = audioManager.play(base64Audio)
+        .then(result => {
+            console.log('[TTS] play result', JSON.stringify({ label, result }));
+            return result;
+        })
+        .catch(() => {
+            console.log('[TTS] play threw', JSON.stringify({ label }));
+            return false;
+        });
+
+    return await Promise.race([playPromise, timeoutPromise]);
+};
 
 const getVoiceGender = (voiceName: string) => {
     return VOICES.find(v => v.id === voiceName)?.gender || 'female';
@@ -313,7 +457,6 @@ const tryPlayLocalSoundBySlug = (rawSlug: string, voiceName: string, preferEngli
                 });
             };
             audio.onended = finishSuccess;
-            audio.onpause = finishSuccess;
             audio.onerror = () => {
                 unregisterHtmlAudio(audio);
                 fail();
@@ -364,22 +507,43 @@ export const speakText = async (text: string, voiceName: string = 'Kore'): Promi
 
     if (!text || text.trim().length === 0) return;
 
+        console.log('[TTS] speakText request', JSON.stringify({ text, voiceName }));
     const playedLocal = await tryPlayLocalSound(text, voiceName);
-    if (playedLocal) return;
+        if (playedLocal) {
+                console.log('[TTS] local audio played');
+                return;
+        }
 
     const audioKey = buildAudioKey(text, voiceName);
   
   const vault = getAudioVault();
-    if (vault[audioKey] && vault[audioKey].length > 100) return await audioManager.play(vault[audioKey]);
-    if (audioManager.isRateLimited) { await browserSpeak(text); return; }
+    if (vault[audioKey] && vault[audioKey].length > 100) {
+        console.log('[TTS] cache hit', JSON.stringify({ audioKey, size: vault[audioKey].length }));
+        const htmlPlayed = await tryPlayBase64HtmlAudio(vault[audioKey]);
+        if (htmlPlayed) {
+            console.log('[TTS] html audio played');
+            return;
+        }
+        const played = await playWithTimeout(vault[audioKey], 'cache');
+        if (played) return;
+        console.log('[TTS] cache play failed, clearing cache', JSON.stringify({ audioKey }));
+        delete vault[audioKey];
+        try { localStorage.setItem(AUDIO_VAULT_KEY, JSON.stringify(vault)); } catch (e) {}
+    }
+    if (audioManager.isRateLimited) {
+        console.log('[TTS] rate-limited, using browserSpeak');
+        await browserSpeak(text);
+        return;
+    }
 
-  stopAllAudio();
-  try {
+    stopAllAudio();
+    try {
         const isNepali = /[\u0900-\u097F]/.test(text);
         const prompt = isNepali
             ? `Pronounce slowly and gently in Nepali with clear syllables: ${text}`
             : `Pronounce slowly and gently in English with clear syllables: ${text}`;
 
+                console.log('[TTS] API call start', JSON.stringify({ model: "gemini-2.5-flash-preview-tts" }));
         const response = await generateContentWithRetry({
       model: "gemini-2.5-flash-preview-tts",
             contents: [{ parts: [{ text: prompt }] }],
@@ -388,12 +552,27 @@ export const speakText = async (text: string, voiceName: string = 'Kore'): Promi
         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceName } } },
       },
     });
+                console.log('[TTS] API call done', JSON.stringify({ hasAudio: Boolean(response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data) }));
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (base64Audio) { 
-                saveToAudioVault(audioKey, base64Audio); 
-        return await audioManager.play(base64Audio); 
+        if (base64Audio) { 
+                saveToAudioVault(audioKey, base64Audio);
+                console.log('[TTS] cached audio', JSON.stringify({ audioKey, size: base64Audio.length }));
+        const htmlPlayed = await tryPlayBase64HtmlAudio(base64Audio);
+        if (htmlPlayed) {
+            console.log('[TTS] html audio played');
+            return;
+        }
+        const played = await playWithTimeout(base64Audio, 'api');
+    if (!played) {
+        console.log('[TTS] API audio play failed, fallback to browserSpeak');
+        await browserSpeak(text);
     }
-    } catch (error: any) { await browserSpeak(text); }
+    return; 
+    }
+        } catch (error: any) {
+                console.log('[TTS] API call failed', JSON.stringify({ message: error?.message, status: error?.status, name: error?.name }));
+                await browserSpeak(text);
+        }
 };
 
 export type BakeryStatus = 'idle' | 'baking' | 'ready';
@@ -609,11 +788,19 @@ export const fetchAlphabet = async (lang: LanguageCode): Promise<LetterData[]> =
     }));
 };
 
-export const translatePhrase = async (text: string, lang: LanguageCode): Promise<PhraseData | null> => {
+export const translatePhrase = async (
+    text: string,
+    lang: LanguageCode,
+    direction: 'toNative' | 'toEnglish' = 'toNative'
+): Promise<PhraseData | null> => {
     try {
+        const prompt = direction === 'toNative'
+            ? `Translate "${text}" into ${getLangName(lang)} for a child. Provide a practical, commonly used phrase. Return JSON with native (in ${getLangName(lang)}), transliteration (romanized), english (in English), and category.`
+            : `Translate "${text}" from ${getLangName(lang)} to English for a child. Return JSON with native (original ${getLangName(lang)} phrase), transliteration (romanized), english (in English), and category.`;
+
         const response = await generateContentWithRetry({
             model: "gemini-3-flash-preview",
-            contents: `Translate "${text}" into ${getLangName(lang)} for a child. Provide a practical, commonly used phrase.`,
+            contents: prompt,
             config: {
                 responseMimeType: "application/json",
                 responseSchema: {

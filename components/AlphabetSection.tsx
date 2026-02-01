@@ -20,6 +20,7 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const guideCanvasRef = useRef<HTMLCanvasElement>(null);
+  const sectionTopRef = useRef<HTMLDivElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [cachedSounds, setCachedSounds] = useState<Set<string>>(new Set());
   const [lastClickedChar, setLastClickedChar] = useState<string | null>(null);
@@ -319,6 +320,7 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
     setSelectedExample(ex);
     setExampleImageSrc(ex.imageUrl || '');
     triggerHaptic(10);
+    sectionTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
     await playNepaliWordSound(ex);
 
@@ -451,12 +453,29 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
 
   if (selectedLetter) {
     return (
-      <div className="max-w-7xl mx-auto animate-fadeIn pb-16 px-2 md:px-4">
+      <div ref={sectionTopRef} className="max-w-7xl mx-auto animate-fadeIn pb-16 px-2 md:px-4">
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-3 mb-4 md:mb-6">
-          <button onClick={() => { stopAllAudio(); setSelectedLetter(null); setSelectedExample(null); }} className="flex items-center gap-2 text-sm md:text-base text-gray-600 hover:text-indigo-600 bg-white/80 backdrop-blur-sm px-4 md:px-5 py-2 rounded-full shadow-md active:scale-95 transition">
-            ← {isEnglishMode ? 'Back to Alphabet' : 'वर्णमाला फर्कनुहोस्'}
-            <span className="hidden md:inline text-xs text-gray-400">{isEnglishMode ? '(वर्णमाला फर्कनुहोस्)' : '(Back to Alphabet)'}</span>
+        <div className="flex items-center justify-between gap-3 mb-4 md:mb-6">
+          <button
+            onClick={() => {
+              stopAllAudio();
+              if (selectedExample) {
+                setSelectedExample(null);
+                setCheckResult(null);
+                clearCanvas();
+                return;
+              }
+              setSelectedLetter(null);
+            }}
+            aria-label={selectedExample ? 'Back to examples' : 'Back to alphabet'}
+            className="inline-flex items-center gap-2 text-xs md:text-sm text-gray-600 hover:text-indigo-600 bg-white/80 backdrop-blur-sm px-3 md:px-4 py-1.5 md:py-2 rounded-full shadow-sm active:scale-95 transition"
+          >
+            <span className="text-base md:text-sm">←</span>
+            <span className="hidden md:inline">
+              {selectedExample
+                ? (isEnglishMode ? 'Back to Examples' : 'उदाहरणमा फर्कनुहोस्')
+                : (isEnglishMode ? 'Back to Alphabet' : 'वर्णमाला फर्कनुहोस्')}
+            </span>
           </button>
           <div className="flex gap-2 md:gap-3">
             {hasPrev && (
@@ -473,40 +492,67 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
         </div>
 
         {/* Main Layout */}
-        <div className="grid grid-cols-1 md:grid-cols-[180px_1fr] lg:grid-cols-[260px_1fr] gap-4 md:gap-6">
+        <div className={`grid grid-cols-1 gap-4 md:gap-6 ${selectedExample ? '' : 'md:grid-cols-[180px_1fr] lg:grid-cols-[260px_1fr]'}`}>
           {/* Left: Letter + Examples (merged) */}
           <div className="bg-white/90 backdrop-blur-md p-4 md:p-6 rounded-3xl shadow-xl border border-indigo-100">
-            <button
-              onClick={() => playLetterSound(selectedLetter)}
-              disabled={isSoundLoading}
-              className="w-full text-center rounded-2xl active:scale-[0.99] transition"
-            >
-              <div className="text-5xl md:text-7xl font-black text-indigo-600 mb-2 md:mb-3 drop-shadow-md">{selectedLetter.char}</div>
-              <p className="text-sm md:text-xl text-indigo-300 font-black uppercase tracking-widest">
-                {selectedLetter.transliteration}
-              </p>
-              <p className="text-[10px] md:text-sm text-indigo-500 mt-2">
-                {isEnglishMode ? 'Tap the letter to hear it' : 'अक्षर थिचेर सुन्नुहोस्'}
-              </p>
-            </button>
+            {!selectedExample ? (
+              <>
+                <button
+                  onClick={() => playLetterSound(selectedLetter)}
+                  disabled={isSoundLoading}
+                  className="w-full text-center rounded-2xl active:scale-[0.99] transition"
+                >
+                  <div className="text-5xl md:text-7xl font-black text-indigo-600 mb-2 md:mb-3 drop-shadow-md">{selectedLetter.char}</div>
+                  <p className="text-sm md:text-xl text-indigo-300 font-black uppercase tracking-widest">
+                    {selectedLetter.transliteration}
+                  </p>
+                  <p className="text-[10px] md:text-sm text-indigo-500 mt-2">
+                    {isEnglishMode ? 'Tap the letter to hear it' : 'अक्षर थिचेर सुन्नुहोस्'}
+                  </p>
+                </button>
 
-            <div className="mt-5 md:mt-6">
-              <h3 className="text-sm md:text-lg font-black text-amber-600 mb-3">
-                {isEnglishMode ? 'Example Words' : 'उदाहरण शब्दहरू'}
-              </h3>
-              <div className="space-y-2 max-h-[320px] md:max-h-96 overflow-y-auto pr-1">
-                {selectedLetter.examples.map((ex, idx) => (
+                <div className="mt-5 md:mt-6">
+                  <h3 className="text-sm md:text-lg font-black text-amber-600 mb-3">
+                    {isEnglishMode ? 'Example Words' : 'उदाहरण शब्दहरू'}
+                  </h3>
+                  <div className="space-y-2 max-h-[320px] md:max-h-96 overflow-y-auto pr-1">
+                    {selectedLetter.examples.map((ex, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => handleExampleClick(ex)}
+                        className={`w-full text-left p-3 md:p-4 rounded-2xl transition-all shadow-md ${selectedExample?.word === ex.word ? 'bg-gradient-to-r from-amber-200 to-amber-300 border-amber-400' : 'bg-gradient-to-r from-amber-50 to-amber-100 hover:from-amber-100 hover:to-amber-200'}`}
+                      >
+                        <p className="text-sm md:text-lg font-black text-gray-800">{ex.word}</p>
+                        <p className="text-[10px] md:text-xs text-gray-500 font-bold uppercase mt-0.5">{ex.english}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="text-center">
+                <div className="text-[10px] font-black uppercase tracking-widest text-amber-500">{isEnglishMode ? 'Selected Word' : 'छानिएको शब्द'}</div>
+                <div className="text-4xl md:text-6xl font-black text-indigo-700 mt-2 mb-1">{selectedExample.word}</div>
+                <div className="text-xs md:text-sm text-indigo-300 font-black uppercase tracking-widest">{selectedExample.transliteration}</div>
+                <div className="inline-flex items-center gap-2 mt-3 bg-amber-50 text-amber-700 px-3 py-1 rounded-full text-xs font-black">
+                  {selectedExample.english}
+                </div>
+                <div className="flex flex-wrap justify-center gap-2 mt-4">
                   <button
-                    key={idx}
-                    onClick={() => handleExampleClick(ex)}
-                    className={`w-full text-left p-3 md:p-4 rounded-2xl transition-all shadow-md ${selectedExample?.word === ex.word ? 'bg-gradient-to-r from-amber-200 to-amber-300 border-amber-400' : 'bg-gradient-to-r from-amber-50 to-amber-100 hover:from-amber-100 hover:to-amber-200'}`}
+                    onClick={() => playNepaliWordSound(selectedExample)}
+                    className="px-4 py-2 rounded-xl bg-indigo-50 text-indigo-600 font-black text-xs shadow-sm hover:bg-indigo-100 transition"
                   >
-                    <p className="text-sm md:text-lg font-black text-gray-800">{ex.word}</p>
-                    <p className="text-[10px] md:text-xs text-gray-500 font-bold uppercase mt-0.5">{ex.english}</p>
+                    {isEnglishMode ? 'Nepali' : 'नेपाली'} 🔊
                   </button>
-                ))}
+                  <button
+                    onClick={() => playEnglishWordSound(selectedExample)}
+                    className="px-4 py-2 rounded-xl bg-pink-50 text-pink-600 font-black text-xs shadow-sm hover:bg-pink-100 transition"
+                  >
+                    {isEnglishMode ? 'English' : 'English'} 🔊
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* Right: Tracing + Picture */}
@@ -592,7 +638,7 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
         </div>
 
         {/* Sound Mixer - slick buttons */}
-        {selectedLetter.type === 'Consonant' && selectedLetter.combos && (
+        {!selectedExample && selectedLetter.type === 'Consonant' && selectedLetter.combos && (
           <div className="mt-10 bg-white/90 backdrop-blur-md p-8 rounded-3xl shadow-xl border border-pink-100">
             <button
               onClick={() => playComboGroup(selectedLetter.combos)}
