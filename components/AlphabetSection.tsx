@@ -39,22 +39,27 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
     ? '#60a5fa'
     : '#d946ef';
 
+  const resizeCanvases = () => {
+    if (!canvasRef.current || !guideCanvasRef.current || !containerRef.current) return;
+    const { width, height } = containerRef.current.getBoundingClientRect();
+    canvasRef.current.width = width;
+    canvasRef.current.height = height;
+    guideCanvasRef.current.width = width;
+    guideCanvasRef.current.height = height;
+    drawGuide();
+  };
+
   // Resize canvases
   useEffect(() => {
-    const resizeCanvases = () => {
-      if (!canvasRef.current || !guideCanvasRef.current || !containerRef.current) return;
-      const { width, height } = containerRef.current.getBoundingClientRect();
-      canvasRef.current.width = width;
-      canvasRef.current.height = height;
-      guideCanvasRef.current.width = width;
-      guideCanvasRef.current.height = height;
-
-      drawGuide();
-    };
-
     resizeCanvases();
     window.addEventListener('resize', resizeCanvases);
     return () => window.removeEventListener('resize', resizeCanvases);
+  }, [selectedLetter, selectedExample]);
+
+  useEffect(() => {
+    if (!selectedLetter && !selectedExample) return;
+    const id = requestAnimationFrame(() => resizeCanvases());
+    return () => cancelAnimationFrame(id);
   }, [selectedLetter, selectedExample]);
 
   // Clean solid faint guide - full word centered, auto-sized to fit
@@ -101,6 +106,9 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
       try {
         const data = await fetchAlphabet(language);
         setLetters(data);
+        if (!selectedLetter && data.length > 0) {
+          setSelectedLetter(data[0]);
+        }
         preCacheAlphabet(language, voiceId);
         const vault = getAudioVault();
         setCachedSounds(new Set(Object.keys(vault)));

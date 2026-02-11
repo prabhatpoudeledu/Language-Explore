@@ -5,29 +5,11 @@ import { AlphabetSection } from './components/AlphabetSection';
 import { WordBuilder } from './components/WordBuilder';
 import { CultureHub } from './components/CultureHub';
 import { PhrasebookSection } from './components/PhrasebookSection';
+import { TracingPracticeSection } from './components/TracingPracticeSection';
 import { VoicePractice } from './components/VoicePractice';
-import { initializeLanguageSession, fetchWordOfTheDay, fetchFunFact, speakText, triggerHaptic, stopAllAudio, generateTravelImage, isVoiceLimited, subscribeToBakery, BakeryStatus, unlockAudio, getAudioState, resolveVoiceId } from './services/geminiService';
+import { AssistantWidget } from './components/AssistantWidget';
+import { initializeLanguageSession, fetchWordOfTheDay, fetchFunFact, speakText, triggerHaptic, stopAllAudio, generateTravelImage, isVoiceLimited, unlockAudio, getAudioState, resolveVoiceId } from './services/geminiService';
 
-
-const SoundBakery: React.FC = () => {
-    const [status, setStatus] = useState<BakeryStatus>('idle');
-
-    useEffect(() => {
-        return subscribeToBakery(setStatus);
-    }, []);
-
-    if (status === 'ready' || status === 'idle') return null;
-
-    return (
-        <div className="fixed bottom-20 right-4 z-[100] p-2 bg-white/95 backdrop-blur-xl rounded-2xl shadow-xl flex items-center gap-2 transition-all animate-bounce border border-yellow-100">
-            <span className="text-xl">👨‍🍳</span>
-            <div className="flex flex-col">
-                <span className="text-[8px] font-black uppercase tracking-widest text-yellow-600">Bakery Open</span>
-                <span className="text-[7px] font-bold text-slate-400">Making Sounds...</span>
-            </div>
-        </div>
-    );
-};
 
 const LoadingGame: React.FC<{ items: string[] }> = ({ items }) => {
     const [score, setScore] = useState(0);
@@ -98,6 +80,7 @@ const App: React.FC = () => {
   const [tempAvatar, setTempAvatar] = useState(AVATARS[0]);
   const [tempVoice, setTempVoice] = useState(VOICES[0].id);
   const [tempGender, setTempGender] = useState<'male' | 'female'>('male');
+  const [tempAssistantPersist, setTempAssistantPersist] = useState(true);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [googleCredential, setGoogleCredential] = useState<string | null>(null);
 
@@ -348,10 +331,10 @@ const App: React.FC = () => {
 
     let p: UserProfile;
     if (isEdit && userProfile) {
-      p = { ...userProfile, name: tempName, avatar: tempAvatar, voice: tempVoice, gender: tempGender };
+      p = { ...userProfile, name: tempName, avatar: tempAvatar, voice: tempVoice, gender: tempGender, assistantPersist: tempAssistantPersist };
       updatedAccount.profiles = updatedAccount.profiles.map(old => old.id === userProfile.id ? p : old);
     } else {
-      p = { id: Date.now().toString(), name: tempName, avatar: tempAvatar, voice: tempVoice, gender: tempGender, autoPlaySound: true, xp: 0, completedWords: [] };
+      p = { id: Date.now().toString(), name: tempName, avatar: tempAvatar, voice: tempVoice, gender: tempGender, autoPlaySound: true, assistantPersist: true, xp: 0, completedWords: [] };
       updatedAccount.profiles = [...updatedAccount.profiles, p];
     }
     
@@ -468,6 +451,7 @@ const App: React.FC = () => {
         setTempName(userProfile?.name || '');
         setTempAvatar(userProfile?.avatar || AVATARS[0]);
         setTempVoice(userProfile?.voice || VOICES[0].id);
+      setTempAssistantPersist(userProfile?.assistantPersist ?? true);
     }
     
     return (
@@ -499,6 +483,17 @@ const App: React.FC = () => {
                 </div>
             </div>
 
+            <div className="space-y-1">
+              <label className="text-[10px] font-black text-indigo-400 uppercase tracking-widest px-2">Assistant Memory</label>
+              <button
+                onClick={() => setTempAssistantPersist(prev => !prev)}
+                className={`w-full p-3 rounded-2xl border-2 flex items-center justify-between transition-all ${tempAssistantPersist ? 'border-indigo-500 bg-indigo-50' : 'border-slate-100 text-slate-400'}`}
+              >
+                <span className="font-black text-xs">{tempAssistantPersist ? 'Remember chats for 30 days' : 'Don\'t remember chats'}</span>
+                <span className="text-lg">{tempAssistantPersist ? '✅' : '🚫'}</span>
+              </button>
+            </div>
+
             <div className="flex gap-3 pt-2">
               <button onClick={() => { stopAllAudio(); setState(edit ? AppState.HOME : AppState.PROFILE_SELECT); }} className="flex-1 py-3 bg-white border border-slate-100 text-gray-400 rounded-xl font-black text-sm transition">Cancel</button>
               <button onClick={() => handleSaveProfile(edit)} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-black text-sm shadow-lg border-b-4 border-red-800 transition">Save</button>
@@ -514,7 +509,6 @@ const App: React.FC = () => {
   return (
     
     <div className="min-h-screen flex flex-col bg-slate-50 font-['Fredoka']">
-      <SoundBakery />
       <header className={`${theme.headerBg} p-2 md:p-3 border-b-2 ${theme.headerBorder} flex items-center justify-between sticky top-0 z-50 shadow-sm backdrop-blur-xl bg-opacity-95`}>
           <div className="flex items-center gap-3">
               <button onClick={() => { stopAllAudio(); setState(AppState.HOME); }} className="text-2xl md:text-3xl hover:scale-110 transition active:scale-95">🏠</button>
@@ -578,11 +572,12 @@ const App: React.FC = () => {
                  <h2 className="text-3xl md:text-5xl font-black mb-8 text-center text-gray-800 tracking-tighter">
                     {showTranslation ? currentLangConfig.name : 'नेपाली'} <span className="text-red-600">{showTranslation ? 'Explorer!' : 'अन्वेषक!'}</span>
                  </h2>
-                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3 md:gap-4 w-full px-2">
+                 <div className="grid grid-cols-2 md:grid-cols-6 gap-3 md:gap-4 w-full px-2">
                     {[
                         { s: AppState.ALPHABET, i: '🌈', t: showTranslation ? currentLangConfig.menu.alphabetEn : currentLangConfig.menu.alphabet, c: 'indigo' },
                         { s: AppState.WORDS, i: '🧩', t: showTranslation ? currentLangConfig.menu.wordsEn : currentLangConfig.menu.words, c: 'emerald' },
                         { s: AppState.PHRASES, i: '🧁', t: showTranslation ? currentLangConfig.menu.phrasesEn : currentLangConfig.menu.phrases, c: 'rose' },
+                    { s: AppState.TRACING, i: '✍️', t: showTranslation ? currentLangConfig.menu.tracingEn : currentLangConfig.menu.tracing, c: 'purple' },
                         { s: AppState.PRACTICE, i: '🎙️', t: showTranslation ? currentLangConfig.menu.practiceEn : currentLangConfig.menu.practice, c: 'blue' },
                         { s: AppState.DISCOVERY, i: '🔭', t: showTranslation ? currentLangConfig.menu.discoveryEn : currentLangConfig.menu.discovery, c: 'amber' }
                     ].map((btn, i) => (
@@ -619,9 +614,11 @@ const App: React.FC = () => {
             {state === AppState.WORDS && <WordBuilder language={currentLang} userProfile={userProfile!} showTranslation={showTranslation} addXp={addXp} completeWord={completeWord} />}
             {state === AppState.DISCOVERY && <CultureHub language={currentLang} userProfile={userProfile!} showTranslation={showTranslation} addXp={addXp} googleCredential={googleCredential} />}
             {state === AppState.PHRASES && <PhrasebookSection language={currentLang} userProfile={userProfile!} showTranslation={showTranslation} addXp={addXp} />}
+            {state === AppState.TRACING && <TracingPracticeSection language={currentLang} userProfile={userProfile!} showTranslation={showTranslation} addXp={addXp} />}
             {state === AppState.PRACTICE && <VoicePractice language={currentLang} userProfile={userProfile!} addXp={addXp} />}
         </div>
       </main>
+      {userProfile && <AssistantWidget language={currentLang} userProfile={userProfile} />}
     </div>
   );
 };

@@ -17,6 +17,8 @@ export interface MenuTranslations {
   wordsEn: string;
   phrases: string;
   phrasesEn: string;
+  tracing: string;
+  tracingEn: string;
   discovery: string;
   discoveryEn: string;
   home: string;
@@ -73,6 +75,8 @@ export const LANGUAGES: LanguageConfig[] = [
       wordsEn: 'Word Factory',
       phrases: 'वाक्यांशहरू',
       phrasesEn: 'Chatty Club',
+      tracing: 'लेखन अभ्यास',
+      tracingEn: 'Tracing Practice',
       discovery: 'नेपाल भ्रमण',
       discoveryEn: 'Land Discovery',
       home: 'घर',
@@ -360,6 +364,7 @@ export interface UserProfile {
   voice: string;
   gender: 'male' | 'female';
   autoPlaySound: boolean;
+  assistantPersist?: boolean;
   xp: number;
   completedWords: string[]; 
 }
@@ -453,6 +458,7 @@ export enum AppState {
   LANGUAGE_SELECT,
   HOME,
   ALPHABET,
+  TRACING,
   WORDS,
   PHRASES,
   DISCOVERY,

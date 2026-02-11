@@ -162,6 +162,27 @@ export const STATIC_ALPHABET: Record<LanguageCode, LetterData[]> = {
         { word: 'अन्तिम', transliteration: 'antim', english: 'Final (Finish)', imageUrl: '/assets/images/antim.webp', nepaliAudio: '/assets/voice/sound/antim_nepali.mp3', englishAudio: '/assets/voice/sound/antim_english.mp3' }
       ]
     },
+    { 
+      char: 'अः', type: 'Vowel', transliteration: 'ah',
+      letterNepaliAudio: '/assets/voice/sound/letter_ah_nepali.mp3',
+      letterEnglishAudio: '/assets/voice/sound/letter_ah_english.mp3',
+      examples: [
+        { word: 'अतः', transliteration: 'atah', english: 'Therefore', imageUrl: '/assets/images/atah.webp', nepaliAudio: '/assets/voice/sound/atah_nepali.mp3', englishAudio: '/assets/voice/sound/atah_english.mp3' },
+        { word: 'प्रातः', transliteration: 'pratah', english: 'Morning', imageUrl: '/assets/images/pratah.webp', nepaliAudio: '/assets/voice/sound/pratah_nepali.mp3', englishAudio: '/assets/voice/sound/pratah_english.mp3' },
+        { word: 'नमः', transliteration: 'namah', english: 'Salutation', imageUrl: '/assets/images/namah.webp', nepaliAudio: '/assets/voice/sound/namah_nepali.mp3', englishAudio: '/assets/voice/sound/namah_english.mp3' },
+        { word: 'फलतः', transliteration: 'phalatah', english: 'As a result', imageUrl: '/assets/images/phalatah.webp', nepaliAudio: '/assets/voice/sound/phalatah_nepali.mp3', englishAudio: '/assets/voice/sound/phalatah_english.mp3' },
+        { word: 'स्वतः', transliteration: 'swatah', english: 'By oneself', imageUrl: '/assets/images/swatah.webp', nepaliAudio: '/assets/voice/sound/swatah_nepali.mp3', englishAudio: '/assets/voice/sound/swatah_english.mp3' }
+      ]
+    },
+    { 
+      char: 'ॠ', type: 'Vowel', transliteration: 'rri',
+      letterNepaliAudio: '/assets/voice/sound/letter_rri_nepali.mp3',
+      letterEnglishAudio: '/assets/voice/sound/letter_rri_english.mp3',
+      examples: [
+        { word: 'ऋषि', transliteration: 'rishi', english: 'Sage', imageUrl: '/assets/images/rishi.webp', nepaliAudio: '/assets/voice/sound/rishi_nepali.mp3', englishAudio: '/assets/voice/sound/rishi_english.mp3' },
+        { word: 'ऋतु', transliteration: 'ritu', english: 'Season', imageUrl: '/assets/images/ritu.webp', nepaliAudio: '/assets/voice/sound/ritu_nepali.mp3', englishAudio: '/assets/voice/sound/ritu_english.mp3' }
+      ]
+    },
 
     // CONSONANTS (36)
     { 
@@ -172,7 +193,7 @@ export const STATIC_ALPHABET: Record<LanguageCode, LetterData[]> = {
         { word: 'कलम', transliteration: 'kalam', english: 'Pen', imageUrl: '/assets/images/kalam.webp', nepaliAudio: '/assets/voice/sound/kalam_nepali.mp3', englishAudio: '/assets/voice/sound/kalam_english.mp3' },
         { word: 'कपाल', transliteration: 'kapal', english: 'Hair', imageUrl: '/assets/images/kapal.webp', nepaliAudio: '/assets/voice/sound/kapal_nepali.mp3', englishAudio: '/assets/voice/sound/kapal_english.mp3' },
         { word: 'कमिलो', transliteration: 'kamilo', english: 'Ant', imageUrl: '/assets/images/kamilo.webp', nepaliAudio: '/assets/voice/sound/kamilo_nepali.mp3', englishAudio: '/assets/voice/sound/kamilo_english.mp3' },
-        { word: 'कागत', transliteration: 'kagat', english: 'Paper', imageUrl: '/assets/images/kagat.webp', nepaliAudio: '/assets/voice/sound/kagat_nepali.mp3', englishAudio: '/assets/voice/sound/kagat_english.mp3' },
+        { word: 'कागज', transliteration: 'kagaj', english: 'Paper', imageUrl: '/assets/images/kagaj.webp', nepaliAudio: '/assets/voice/sound/kagaj_nepali.mp3', englishAudio: '/assets/voice/sound/kagaj_english.mp3' },
         { word: 'कठिन', transliteration: 'kathin', english: 'Difficult (Climb)', imageUrl: '/assets/images/kathin.webp', nepaliAudio: '/assets/voice/sound/kathin_nepali.mp3', englishAudio: '/assets/voice/sound/kathin_english.mp3' }
       ], 
       combos: getNepaliBarahkhari('क', 'k') 
@@ -190,9 +211,6 @@ export const STATIC_ALPHABET: Record<LanguageCode, LetterData[]> = {
       ], 
       combos: getNepaliBarahkhari('ख', 'kh') 
     },
-    // ... (continue the same pattern for all remaining consonants - I have applied it to all in the full code below)
-    // For brevity, the pattern is consistent: local image, nepaliAudio, englishAudio, and letter audio fields
-
     // Full remaining consonants with local assets (pattern applied)
     { 
       char: 'ग', type: 'Consonant', transliteration: 'ga',

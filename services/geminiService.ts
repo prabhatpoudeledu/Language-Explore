@@ -827,6 +827,22 @@ export const fetchWordBatch = async (lang: LanguageCode, forceNew: boolean = fal
     return STATIC_WORDS[lang] || [];
 };
 
+export const askKidAssistant = async (message: string, lang: LanguageCode): Promise<string> => {
+    if (!message.trim()) return '';
+    try {
+        const response = await generateContentWithRetry({
+            model: "gemini-3-flash-preview",
+            contents: `You are a cheerful Nepali assistant for kids. Respond in simple Nepali, short sentences, and be friendly. Answer: "${message}"`,
+            config: {
+                responseMimeType: "text/plain"
+            }
+        });
+        return response.text || 'म यहाँ छु! फेरि प्रयास गरौँ।';
+    } catch (e) {
+        return 'माफ गर्नुहोस्, अहिले म व्यस्त छु। फेरि प्रयास गरौँ।';
+    }
+};
+
 export const validateHandwriting = async (base64: string, char: string, lang: LanguageCode): Promise<boolean> => {
     try {
         const response = await generateContentWithRetry({
