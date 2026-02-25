@@ -57,3 +57,30 @@ This project can be packaged for Android/iOS using Capacitor.
    `npx cap add ios`
 3. Open in Xcode:
    `npx cap open ios`
+
+## Android Build (APK/AAB)
+
+1. Build + sync:
+   `npm run cap:sync`
+2. Open in Android Studio:
+   `npx cap open android`
+3. In Android Studio, use **Build > Build Bundle(s) / APK(s)**
+
+## iOS Build (App)
+
+1. Build + sync:
+   `npm run cap:sync`
+2. Open in Xcode:
+   `npx cap open ios`
+3. Set your signing team in **Signing & Capabilities**
+4. Use **Product > Archive** to create a build
+
+## When Native Code Is Needed
+
+You do not need extra native code for standard web features. Add platform-specific code only when using native device capabilities such as:
+
+- Camera, microphone, or file system access
+- Push notifications
+- Background tasks or deep OS integrations
+
+In those cases, install the appropriate Capacitor plugin and follow its iOS/Android setup steps.
