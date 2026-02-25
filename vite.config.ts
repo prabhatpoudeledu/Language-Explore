@@ -24,6 +24,17 @@ export default defineConfig(({ mode }) => {
           '@': path.resolve(__dirname, '.'),
         }
       },
+      build: {
+        chunkSizeWarningLimit: 650,
+        rollupOptions: {
+          output: {
+            manualChunks: {
+              vendor: ['react', 'react-dom'],
+              leaflet: ['leaflet', 'react-leaflet']
+            }
+          }
+        }
+      },
       test: {
         environment: 'jsdom',
         setupFiles: './tests/setup.ts',

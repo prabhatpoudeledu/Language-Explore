@@ -15,6 +15,10 @@ export interface MenuTranslations {
   alphabetEn: string;
   words: string;
   wordsEn: string;
+  vocabulary: string;
+  vocabularyEn: string;
+  numbers: string;
+  numbersEn: string;
   phrases: string;
   phrasesEn: string;
   tracing: string;
@@ -73,6 +77,10 @@ export const LANGUAGES: LanguageConfig[] = [
       alphabetEn: 'Letter Land',
       words: 'शब्दहरू',
       wordsEn: 'Word Factory',
+      vocabulary: 'शब्द कोष',
+      vocabularyEn: 'Vocabulary',
+      numbers: 'संख्या',
+      numbersEn: 'Number Town',
       phrases: 'वाक्यांशहरू',
       phrasesEn: 'Chatty Club',
       tracing: 'लेखन अभ्यास',
@@ -450,6 +458,27 @@ export interface SongData {
     youtubeId?: string;
 }
 
+export interface VocabularyItem {
+  english: string;
+  nepali: string;
+  pronunciation: string;
+}
+
+export interface VocabularyCategory {
+  id: string;
+  labelEn: string;
+  labelNp: string;
+  items: VocabularyItem[];
+}
+
+export interface NumberData {
+  value: number;
+  numeral: string;
+  word: string;
+  pronunciation: string;
+  roman: string;
+}
+
 export enum AppState {
   LOGIN,
   PROFILE_SELECT,
@@ -459,6 +488,8 @@ export enum AppState {
   HOME,
   ALPHABET,
   TRACING,
+  NUMBERS,
+  VOCABULARY,
   WORDS,
   PHRASES,
   DISCOVERY,

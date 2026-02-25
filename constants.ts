@@ -1,5 +1,5 @@
 
-import { LetterData, WordChallenge, PhraseData, LanguageCode } from './types';
+import { LetterData, WordChallenge, PhraseData, LanguageCode, NumberData, VocabularyCategory } from './types';
 
 const getNepaliBarahkhari = (consonant: string, baseTrans: string) => [
   { char: consonant + 'ा', sound: baseTrans + 'aa' },
@@ -586,6 +586,304 @@ export const STATIC_ALPHABET: Record<LanguageCode, LetterData[]> = {
   combos: getNepaliBarahkhari('ज्ञ', 'gy')
 }
 	],
+  es: [],
+  zh: []
+};
+
+export const STATIC_NUMBERS: Record<LanguageCode, NumberData[]> = {
+  np: [
+    { value: 0, numeral: '०', word: 'सुन्ना', pronunciation: 'sunna', roman: '' },
+    { value: 1, numeral: '१', word: 'एक', pronunciation: 'ek', roman: 'I' },
+    { value: 2, numeral: '२', word: 'दुई', pronunciation: 'dui', roman: 'II' },
+    { value: 3, numeral: '३', word: 'तीन', pronunciation: 'tin', roman: 'III' },
+    { value: 4, numeral: '४', word: 'चार', pronunciation: 'char', roman: 'IV' },
+    { value: 5, numeral: '५', word: 'पाँच', pronunciation: 'panch', roman: 'V' },
+    { value: 6, numeral: '६', word: 'छ', pronunciation: 'chha', roman: 'VI' },
+    { value: 7, numeral: '७', word: 'सात', pronunciation: 'sat', roman: 'VII' },
+    { value: 8, numeral: '८', word: 'आठ', pronunciation: 'ath', roman: 'VIII' },
+    { value: 9, numeral: '९', word: 'नौ', pronunciation: 'nau', roman: 'IX' },
+    { value: 10, numeral: '१०', word: 'दस', pronunciation: 'das', roman: 'X' },
+    { value: 11, numeral: '११', word: 'एघार', pronunciation: 'eghar', roman: 'XI' },
+    { value: 12, numeral: '१२', word: 'बाह्र', pronunciation: 'bahra', roman: 'XII' },
+    { value: 13, numeral: '१३', word: 'तेह्र', pronunciation: 'tehr', roman: 'XIII' },
+    { value: 14, numeral: '१४', word: 'चौध', pronunciation: 'chaudh', roman: 'XIV' },
+    { value: 15, numeral: '१५', word: 'पन्ध्र', pronunciation: 'pandhr', roman: 'XV' },
+    { value: 16, numeral: '१६', word: 'सोह्र', pronunciation: 'sohr', roman: 'XVI' },
+    { value: 17, numeral: '१७', word: 'सत्र', pronunciation: 'satr', roman: 'XVII' },
+    { value: 18, numeral: '१८', word: 'अठार', pronunciation: 'athar', roman: 'XVIII' },
+    { value: 19, numeral: '१९', word: 'उन्नाइस', pronunciation: 'unnais', roman: 'XIX' },
+    { value: 20, numeral: '२०', word: 'बिस', pronunciation: 'bis', roman: 'XX' },
+    { value: 21, numeral: '२१', word: 'एक्काइस', pronunciation: 'ekkais', roman: 'XXI' },
+    { value: 22, numeral: '२२', word: 'बाइस', pronunciation: 'bais', roman: 'XXII' },
+    { value: 23, numeral: '२३', word: 'तेइस', pronunciation: 'teis', roman: 'XXIII' },
+    { value: 24, numeral: '२४', word: 'चौबिस', pronunciation: 'chaubis', roman: 'XXIV' },
+    { value: 25, numeral: '२५', word: 'पच्चिस', pronunciation: 'pacchis', roman: 'XXV' },
+    { value: 26, numeral: '२६', word: 'छब्बिस', pronunciation: 'chhabbis', roman: 'XXVI' },
+    { value: 27, numeral: '२७', word: 'सत्ताइस', pronunciation: 'sattais', roman: 'XXVII' },
+    { value: 28, numeral: '२८', word: 'अट्ठाइस', pronunciation: 'atthais', roman: 'XXVIII' },
+    { value: 29, numeral: '२९', word: 'उनन्तिस', pronunciation: 'unantis', roman: 'XXIX' },
+    { value: 30, numeral: '३०', word: 'तिस', pronunciation: 'tis', roman: 'XXX' },
+    { value: 31, numeral: '३१', word: 'एकतिस', pronunciation: 'ektis', roman: 'XXXI' },
+    { value: 32, numeral: '३२', word: 'बत्तिस', pronunciation: 'battis', roman: 'XXXII' },
+    { value: 33, numeral: '३३', word: 'तेतिस', pronunciation: 'tettis', roman: 'XXXIII' },
+    { value: 34, numeral: '३४', word: 'चौतिस', pronunciation: 'chautis', roman: 'XXXIV' },
+    { value: 35, numeral: '३५', word: 'पैँतिस', pronunciation: 'paintis', roman: 'XXXV' },
+    { value: 36, numeral: '३६', word: 'छत्तिस', pronunciation: 'chhattis', roman: 'XXXVI' },
+    { value: 37, numeral: '३७', word: 'सैँतिस', pronunciation: 'saintis', roman: 'XXXVII' },
+    { value: 38, numeral: '३८', word: 'अठतिस', pronunciation: 'athatis', roman: 'XXXVIII' },
+    { value: 39, numeral: '३९', word: 'उनन्चालिस', pronunciation: 'unanchalis', roman: 'XXXIX' },
+    { value: 40, numeral: '४०', word: 'चालिस', pronunciation: 'chalis', roman: 'XL' },
+    { value: 41, numeral: '४१', word: 'एकचालिस', pronunciation: 'ekchalis', roman: 'XLI' },
+    { value: 42, numeral: '४२', word: 'बयालिस', pronunciation: 'bayalis', roman: 'XLII' },
+    { value: 43, numeral: '४३', word: 'त्रिचालिस', pronunciation: 'trichalis', roman: 'XLIII' },
+    { value: 44, numeral: '४४', word: 'चवालिस', pronunciation: 'chawalis', roman: 'XLIV' },
+    { value: 45, numeral: '४५', word: 'पैँतालिस', pronunciation: 'paintalis', roman: 'XLV' },
+    { value: 46, numeral: '४६', word: 'छयालिस', pronunciation: 'chhayalis', roman: 'XLVI' },
+    { value: 47, numeral: '४७', word: 'सतचालिस', pronunciation: 'satchalis', roman: 'XLVII' },
+    { value: 48, numeral: '४८', word: 'अठचालिस', pronunciation: 'athchalis', roman: 'XLVIII' },
+    { value: 49, numeral: '४९', word: 'उनन्चास', pronunciation: 'unanchas', roman: 'XLIX' },
+    { value: 50, numeral: '५०', word: 'पचास', pronunciation: 'pachas', roman: 'L' },
+    { value: 51, numeral: '५१', word: 'एकाउन्न', pronunciation: 'ekaunn', roman: 'LI' },
+    { value: 52, numeral: '५२', word: 'बाउन्न', pronunciation: 'baunn', roman: 'LII' },
+    { value: 53, numeral: '५३', word: 'त्रिपन्न', pronunciation: 'tripanna', roman: 'LIII' },
+    { value: 54, numeral: '५४', word: 'चवन्न', pronunciation: 'chawanna', roman: 'LIV' },
+    { value: 55, numeral: '५५', word: 'पचपन्न', pronunciation: 'pachpanna', roman: 'LV' },
+    { value: 56, numeral: '५६', word: 'छपन्न', pronunciation: 'chhapanna', roman: 'LVI' },
+    { value: 57, numeral: '५७', word: 'सन्ताउन्न', pronunciation: 'santaunn', roman: 'LVII' },
+    { value: 58, numeral: '५८', word: 'अन्ठाउन्न', pronunciation: 'anthaunn', roman: 'LVIII' },
+    { value: 59, numeral: '५९', word: 'उनसट्ठी', pronunciation: 'unsatthi', roman: 'LIX' },
+    { value: 60, numeral: '६०', word: 'साठी', pronunciation: 'sathi', roman: 'LX' },
+    { value: 61, numeral: '६१', word: 'एकसट्ठी', pronunciation: 'eksatthi', roman: 'LXI' },
+    { value: 62, numeral: '६२', word: 'बयसट्ठी', pronunciation: 'baysatthi', roman: 'LXII' },
+    { value: 63, numeral: '६३', word: 'त्रिसट्ठी', pronunciation: 'trisatthi', roman: 'LXIII' },
+    { value: 64, numeral: '६४', word: 'चौसट्ठी', pronunciation: 'chausatthi', roman: 'LXIV' },
+    { value: 65, numeral: '६५', word: 'पैँसट्ठी', pronunciation: 'painsatthi', roman: 'LXV' },
+    { value: 66, numeral: '६६', word: 'छयसट्ठी', pronunciation: 'chhaysatthi', roman: 'LXVI' },
+    { value: 67, numeral: '६७', word: 'सतसट्ठी', pronunciation: 'satsatthi', roman: 'LXVII' },
+    { value: 68, numeral: '६८', word: 'अठसट्ठी', pronunciation: 'athsathhi', roman: 'LXVIII' },
+    { value: 69, numeral: '६९', word: 'उनन्सत्तरी', pronunciation: 'unansattari', roman: 'LXIX' },
+    { value: 70, numeral: '७०', word: 'सत्तरी', pronunciation: 'sattari', roman: 'LXX' },
+    { value: 71, numeral: '७१', word: 'एकहत्तर', pronunciation: 'ekhattar', roman: 'LXXI' },
+    { value: 72, numeral: '७२', word: 'बहत्तर', pronunciation: 'bahattar', roman: 'LXXII' },
+    { value: 73, numeral: '७३', word: 'त्रिहत्तर', pronunciation: 'trihattar', roman: 'LXXIII' },
+    { value: 74, numeral: '७४', word: 'चौहत्तर', pronunciation: 'chauhattar', roman: 'LXXIV' },
+    { value: 75, numeral: '७५', word: 'पचहत्तर', pronunciation: 'pachhattar', roman: 'LXXV' },
+    { value: 76, numeral: '७६', word: 'छयहत्तर', pronunciation: 'chhayhattar', roman: 'LXXVI' },
+    { value: 77, numeral: '७७', word: 'सतहत्तर', pronunciation: 'sathattar', roman: 'LXXVII' },
+    { value: 78, numeral: '७८', word: 'अठहत्तर', pronunciation: 'athhattar', roman: 'LXXVIII' },
+    { value: 79, numeral: '७९', word: 'उनासी', pronunciation: 'unasi', roman: 'LXXIX' },
+    { value: 80, numeral: '८०', word: 'असी', pronunciation: 'asi', roman: 'LXXX' },
+    { value: 81, numeral: '८१', word: 'एकासी', pronunciation: 'ekasi', roman: 'LXXXI' },
+    { value: 82, numeral: '८२', word: 'बयासी', pronunciation: 'bayasi', roman: 'LXXXII' },
+    { value: 83, numeral: '८३', word: 'त्रियासी', pronunciation: 'triyasi', roman: 'LXXXIII' },
+    { value: 84, numeral: '८४', word: 'चौरासी', pronunciation: 'chaurasi', roman: 'LXXXIV' },
+    { value: 85, numeral: '८५', word: 'पचासी', pronunciation: 'pachasi', roman: 'LXXXV' },
+    { value: 86, numeral: '८६', word: 'छयासी', pronunciation: 'chhayasi', roman: 'LXXXVI' },
+    { value: 87, numeral: '८७', word: 'सतासी', pronunciation: 'satasi', roman: 'LXXXVII' },
+    { value: 88, numeral: '८८', word: 'अठासी', pronunciation: 'athasi', roman: 'LXXXVIII' },
+    { value: 89, numeral: '८९', word: 'उनान्नब्बे', pronunciation: 'unannabbe', roman: 'LXXXIX' },
+    { value: 90, numeral: '९०', word: 'नब्बे', pronunciation: 'nabbe', roman: 'XC' },
+    { value: 91, numeral: '९१', word: 'एकान्नब्बे', pronunciation: 'ekannabbe', roman: 'XCI' },
+    { value: 92, numeral: '९२', word: 'बयान्नब्बे', pronunciation: 'bayannabbe', roman: 'XCII' },
+    { value: 93, numeral: '९३', word: 'त्रियान्नब्बे', pronunciation: 'triyannabbe', roman: 'XCIII' },
+    { value: 94, numeral: '९४', word: 'चौरान्नब्बे', pronunciation: 'chaurannabbe', roman: 'XCIV' },
+    { value: 95, numeral: '९५', word: 'पन्चान्नब्बे', pronunciation: 'panchanabbe', roman: 'XCV' },
+    { value: 96, numeral: '९६', word: 'छयान्नब्बे', pronunciation: 'chhayannabbe', roman: 'XCVI' },
+    { value: 97, numeral: '९७', word: 'सन्तान्नब्बे', pronunciation: 'santannabbe', roman: 'XCVII' },
+    { value: 98, numeral: '९८', word: 'अन्ठान्नब्बे', pronunciation: 'anthannabbe', roman: 'XCVIII' },
+    { value: 99, numeral: '९९', word: 'उनान्सय', pronunciation: 'unansaya', roman: 'XCIX' },
+    { value: 100, numeral: '१००', word: 'सय', pronunciation: 'saya', roman: 'C' }
+  ],
+  es: [],
+  zh: []
+};
+
+export const STATIC_VOCABULARY: Record<LanguageCode, VocabularyCategory[]> = {
+  np: [
+    {
+      id: 'colors',
+      labelEn: 'Colors',
+      labelNp: 'रङ',
+      items: [
+        { english: 'Red', nepali: 'रातो', pronunciation: 'rato' },
+        { english: 'Orange', nepali: 'सुन्तला', pronunciation: 'Suntalā' },
+        { english: 'Yellow', nepali: 'पहेँलो', pronunciation: 'pahelo' },
+        { english: 'Green', nepali: 'हरियो', pronunciation: 'hariyo' },
+        { english: 'Blue', nepali: 'नीलो', pronunciation: 'nilo' },
+        { english: 'Dark Blue', nepali: 'गाढा नीलो', pronunciation: 'gadha nilo' },
+        { english: 'Pink', nepali: 'गुलाबी', pronunciation: 'gulabi' },
+        { english: 'Brown', nepali: 'खैरो', pronunciation: 'khairo' },
+        { english: 'White', nepali: 'सेतो', pronunciation: 'seto' },
+        { english: 'Black', nepali: 'कालो', pronunciation: 'kalo' },
+        { english: 'Silver', nepali: 'चाँदी', pronunciation: 'chandi' }
+      ]
+    },
+    {
+      id: 'food',
+      labelEn: 'Food',
+      labelNp: 'खाना',
+      items: [
+        { english: 'Dal Bhat', nepali: 'दाल भात', pronunciation: 'dal bhat' },
+        { english: 'Chowmein', nepali: 'चौमिन', pronunciation: 'chaumin' },
+        { english: 'Pizza', nepali: 'पिज्जा', pronunciation: 'pizza' },
+        { english: 'Pasta', nepali: 'पास्ता', pronunciation: 'pasta' },
+        { english: 'Macaroni', nepali: 'म्याकरोनी', pronunciation: 'macaroni' },
+        { english: 'Chicken Sizzler', nepali: 'चिकन सिजलर', pronunciation: 'chicken sizzler' }
+      ]
+    },
+    {
+      id: 'fruits',
+      labelEn: 'Fruits',
+      labelNp: 'फलफूल',
+      items: [
+        { english: 'Pineapple', nepali: 'भुईकटहर', pronunciation: 'bhuikatihar' },
+        { english: 'Mango', nepali: 'आँप', pronunciation: 'aap' },
+        { english: 'Orange', nepali: 'सुन्तला', pronunciation: 'suntala' },
+        { english: 'Banana', nepali: 'केरा', pronunciation: 'kera' },
+        { english: 'Strawberry', nepali: 'स्ट्रबेरी', pronunciation: 'strawberry' },
+        { english: 'Grapes', nepali: 'अंगुर', pronunciation: 'angur' },
+        { english: 'Apple', nepali: 'स्याउ', pronunciation: 'syau' },
+        { english: 'Pomegranate', nepali: 'अनार', pronunciation: 'anar' },
+        { english: 'Peach', nepali: 'आरु', pronunciation: 'aru' },
+        { english: 'Litchi', nepali: 'लिची', pronunciation: 'lichi' },
+        { english: 'Papaya', nepali: 'मेवा', pronunciation: 'mewa' },
+        { english: 'Guava', nepali: 'अम्बा', pronunciation: 'amba' },
+        { english: 'Watermelon', nepali: 'खर्बुजा', pronunciation: 'kharbuja' },
+        { english: 'Sugarcane', nepali: 'उखु', pronunciation: 'ukhu' },
+        { english: 'Pear', nepali: 'नासपाती', pronunciation: 'naspati' },
+        { english: 'Plum', nepali: 'आलुबखडा', pronunciation: 'alubakhada' },
+        { english: 'Persimmon', nepali: 'हलुवाबेद', pronunciation: 'haluwabed' },
+        { english: 'Custard Apple', nepali: 'शरीफा', pronunciation: 'sharifa' },
+        { english: 'Kiwi', nepali: 'किवी', pronunciation: 'kiwi' },
+        { english: 'Jackfruit', nepali: 'कटहर', pronunciation: 'katahar' }
+      ]
+    },
+    {
+      id: 'vegetables',
+      labelEn: 'Vegetables',
+      labelNp: 'तरकारी',
+      items: [
+        { english: 'Potato', nepali: 'आलु', pronunciation: 'alu' },
+        { english: 'Tomato', nepali: 'गोलभेडा', pronunciation: 'golbheda' },
+        { english: 'Onion', nepali: 'प्याज', pronunciation: 'pyaj' },
+        { english: 'Carrot', nepali: 'गाजर', pronunciation: 'gajar' },
+        { english: 'Cauliflower', nepali: 'काउली', pronunciation: 'kauli' },
+        { english: 'Cabbage', nepali: 'बन्दा', pronunciation: 'banda' },
+        { english: 'Cucumber', nepali: 'काँक्रो', pronunciation: 'kankro' },
+        { english: 'Eggplant', nepali: 'भान्टा', pronunciation: 'bhanta' },
+        { english: 'Broccoli', nepali: 'ब्रोकली', pronunciation: 'brokoli' },
+        { english: 'Spinach', nepali: 'पालुङ्गो', pronunciation: 'palungo' }
+      ]
+    },
+    {
+      id: 'animals',
+      labelEn: 'Animals',
+      labelNp: 'जनावर',
+      items: [
+        { english: 'Cow', nepali: 'गाई', pronunciation: 'gai' },
+        { english: 'Dog', nepali: 'कुकुर', pronunciation: 'kukur' },
+        { english: 'Cat', nepali: 'बिरालो', pronunciation: 'biralo' },
+        { english: 'Goat', nepali: 'बाख्रा', pronunciation: 'bakhra' },
+        { english: 'Horse', nepali: 'घोडा', pronunciation: 'ghoda' },
+        { english: 'Tiger', nepali: 'बाघ', pronunciation: 'bagh' },
+        { english: 'Lion', nepali: 'सिंह', pronunciation: 'sinh' },
+        { english: 'Elephant', nepali: 'हात्ती', pronunciation: 'hatti' },
+        { english: 'Bear', nepali: 'भालु', pronunciation: 'bhalu' },
+        { english: 'Monkey', nepali: 'बाँदर', pronunciation: 'bandar' },
+        { english: 'Fish', nepali: 'माछा', pronunciation: 'macha' },
+        { english: 'Dolphin', nepali: 'डल्फिन', pronunciation: 'dolphin' },
+        { english: 'Shark', nepali: 'शार्क', pronunciation: 'shark' },
+        { english: 'Whale', nepali: 'ह्वेल', pronunciation: 'hwel' }
+      ]
+    },
+    {
+      id: 'birds',
+      labelEn: 'Birds',
+      labelNp: 'चरा',
+      items: [
+        { english: 'Crow', nepali: 'काग', pronunciation: 'kag' },
+        { english: 'Sparrow', nepali: 'भँगेरा', pronunciation: 'bhangera' },
+        { english: 'Parrot', nepali: 'सुगा', pronunciation: 'suga' },
+        { english: 'Peacock', nepali: 'मयूर', pronunciation: 'mayur' },
+        { english: 'Pigeon', nepali: 'परेवा', pronunciation: 'parewa' },
+        { english: 'Eagle', nepali: 'चील', pronunciation: 'chil' }
+      ]
+    },
+    {
+      id: 'insects',
+      labelEn: 'Insects',
+      labelNp: 'किरा',
+      items: [
+        { english: 'Ant', nepali: 'कमिला', pronunciation: 'kamila' },
+        { english: 'Bee', nepali: 'मौरी', pronunciation: 'mauri' },
+        { english: 'Butterfly', nepali: 'पुतली', pronunciation: 'putali' },
+        { english: 'Mosquito', nepali: 'लामखुट्टे', pronunciation: 'lamkhutte' },
+        { english: 'Fly', nepali: 'झिँगा', pronunciation: 'jhinga' }
+      ]
+    },
+    {
+      id: 'flowers',
+      labelEn: 'Flowers',
+      labelNp: 'फूल',
+      items: [
+        { english: 'Rose', nepali: 'गुलाब', pronunciation: 'gulab' },
+        { english: 'Lotus', nepali: 'कमल', pronunciation: 'kamal' },
+        { english: 'Sunflower', nepali: 'सूर्यमुखी', pronunciation: 'suryamukhi' },
+        { english: 'Marigold', nepali: 'सयपत्री', pronunciation: 'sayapatri' },
+        { english: 'Jasmine', nepali: 'चमेली', pronunciation: 'chameli' }
+      ]
+    },
+    {
+      id: 'toys',
+      labelEn: 'Toys',
+      labelNp: 'खेलौना',
+      items: [
+        { english: 'Ball', nepali: 'बल', pronunciation: 'bal' },
+        { english: 'Doll', nepali: 'पुतली', pronunciation: 'putali' },
+        { english: 'Teddy Bear', nepali: 'टेडी बेयर', pronunciation: 'teddy bear' },
+        { english: 'Toy Car', nepali: 'खेलौना गाडी', pronunciation: 'khelouna gadi' },
+        { english: 'Kite', nepali: 'चङ्गा', pronunciation: 'changa' }
+      ]
+    },
+    {
+      id: 'vehicles',
+      labelEn: 'Vehicles',
+      labelNp: 'सवारी साधन',
+      items: [
+        { english: 'Car', nepali: 'गाडी', pronunciation: 'gadi' },
+        { english: 'Bus', nepali: 'बस', pronunciation: 'bas' },
+        { english: 'Bicycle', nepali: 'साइकल', pronunciation: 'cycle' },
+        { english: 'Motorcycle', nepali: 'मोटरसाइकल', pronunciation: 'motorbike' },
+        { english: 'Train', nepali: 'रेल', pronunciation: 'rail' },
+        { english: 'Airplane', nepali: 'हवाईजहाज', pronunciation: 'hawaijahaj' }
+      ]
+    },
+    {
+      id: 'body_parts',
+      labelEn: 'Body Parts',
+      labelNp: 'शरीर अङ्ग',
+      items: [
+        { english: 'Head', nepali: 'टाउको', pronunciation: 'tauko' },
+        { english: 'Hair', nepali: 'कपाल', pronunciation: 'kapal' },
+        { english: 'Eye', nepali: 'आँखा', pronunciation: 'aankha' },
+        { english: 'Nose', nepali: 'नाक', pronunciation: 'nak' },
+        { english: 'Ear', nepali: 'कान', pronunciation: 'kan' },
+        { english: 'Mouth', nepali: 'मुख', pronunciation: 'mukh' },
+        { english: 'Teeth', nepali: 'दाँत', pronunciation: 'daant' },
+        { english: 'Hand', nepali: 'हात', pronunciation: 'hat' },
+        { english: 'Finger', nepali: 'औँला', pronunciation: 'aula' },
+        { english: 'Leg', nepali: 'खुट्टा', pronunciation: 'khutta' },
+        { english: 'Knee', nepali: 'घुँडा', pronunciation: 'ghuda' },
+        { english: 'Foot', nepali: 'खुट्टा', pronunciation: 'khutta' }
+      ]
+    },
+    {
+      id: 'clothes',
+      labelEn: 'Clothes',
+      labelNp: 'लुगा',
+      items: []
+    }
+  ],
   es: [],
   zh: []
 };

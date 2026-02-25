@@ -1,7 +1,7 @@
 
 import { GoogleGenAI, Type, Modality } from "@google/genai";
-import { UserProfile, VOICES, LetterData, WordChallenge, PhraseData, LanguageCode, LANGUAGES, WordOfTheDayData, AccountData, SongData } from '../types';
-import { STATIC_ALPHABET, STATIC_WORDS, STATIC_PHRASES } from '../constants';
+import { UserProfile, VOICES, LetterData, WordChallenge, PhraseData, LanguageCode, LANGUAGES, WordOfTheDayData, AccountData, SongData, NumberData, VocabularyCategory } from '../types';
+import { STATIC_ALPHABET, STATIC_WORDS, STATIC_PHRASES, STATIC_NUMBERS, STATIC_VOCABULARY } from '../constants';
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
@@ -224,6 +224,12 @@ export const stopAllAudio = () => {
     stopHtmlAudio();
     audioManager.stop();
 };
+let soundEnabled = true;
+export const setSoundEnabled = (enabled: boolean) => {
+    soundEnabled = enabled;
+    if (!enabled) stopAllAudio();
+};
+export const isSoundEnabled = () => soundEnabled;
 export const isAudioBusy = () => audioManager.isBusy;
 export const isVoiceLimited = () => audioManager.isRateLimited;
 export const unlockAudio = () => audioManager.unlock();
@@ -265,11 +271,24 @@ const browserSpeak = (text: string): Promise<void> => {
     if (!window.speechSynthesis) return Promise.resolve();
     return new Promise(resolve => {
         const utterance = new SpeechSynthesisUtterance(text);
-        if (text.match(/[\u0900-\u097F]/)) utterance.lang = 'hi-IN';
-        else utterance.lang = 'en-US';
-        utterance.rate = 0.7;
-        utterance.pitch = 0.95;
-        console.log('[TTS] browserSpeak start', JSON.stringify({ lang: utterance.lang }));
+        const isNepali = Boolean(text.match(/[\u0900-\u097F]/));
+        utterance.lang = isNepali ? 'ne-NP' : 'en-US';
+
+        const voices = window.speechSynthesis.getVoices();
+        if (voices.length > 0) {
+            const nepaliVoice = voices.find(v => v.lang.toLowerCase().startsWith('ne'))
+                || voices.find(v => v.name.toLowerCase().includes('nepali'));
+            const hindiVoice = voices.find(v => v.lang.toLowerCase() === 'hi-in');
+            const fallbackVoice = voices.find(v => v.lang.toLowerCase().startsWith('en'));
+            const chosenVoice = isNepali
+                ? (nepaliVoice || hindiVoice || fallbackVoice)
+                : fallbackVoice;
+            if (chosenVoice) utterance.voice = chosenVoice;
+        }
+
+        utterance.rate = isNepali ? 0.6 : 0.7;
+        utterance.pitch = isNepali ? 0.9 : 0.95;
+        console.log('[TTS] browserSpeak start', JSON.stringify({ lang: utterance.lang, voice: utterance.voice?.name }));
         utterance.onend = () => {
             console.log('[TTS] browserSpeak end');
             resolve();
@@ -502,8 +521,10 @@ export const resolveVoiceId = (profile?: UserProfile | null): string => {
 };
 
 export const speakText = async (text: string, voiceName: string = 'Kore'): Promise<void> => {
-  // Always try to wake context first
-  await audioManager.unlock();
+    if (!soundEnabled) return;
+
+    // Always try to wake context first
+    await audioManager.unlock();
 
     if (!text || text.trim().length === 0) return;
 
@@ -786,6 +807,14 @@ export const fetchAlphabet = async (lang: LanguageCode): Promise<LetterData[]> =
             englishAudio: normalizeSoundPath(example.englishAudio)
         }))
     }));
+};
+
+export const fetchNumbers = async (lang: LanguageCode): Promise<NumberData[]> => {
+    return STATIC_NUMBERS[lang] || [];
+};
+
+export const fetchVocabulary = async (lang: LanguageCode): Promise<VocabularyCategory[]> => {
+    return STATIC_VOCABULARY[lang] || [];
 };
 
 export const translatePhrase = async (

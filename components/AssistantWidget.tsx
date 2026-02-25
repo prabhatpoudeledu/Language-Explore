@@ -57,19 +57,19 @@ export const AssistantWidget: React.FC<Props> = ({ language, userProfile }) => {
 
   const handleSend = async () => {
     const text = input.trim();
-    if (!text) return;
+    if (!text || isTyping) return;
     setInput('');
     setMessages(prev => [...prev, { role: 'user', text }]);
     setIsTyping(true);
     triggerHaptic(5);
 
-    const reply = await askKidAssistant(text, language);
-    setIsTyping(false);
-    setMessages(prev => [...prev, { role: 'assistant', text: reply }]);
-    const speechText = sanitizeForSpeech(reply);
-    if (speechText) {
-      stopAllAudio();
-      await speakText(speechText, voiceId);
+    try {
+      const reply = await askKidAssistant(text, language);
+      setMessages(prev => [...prev, { role: 'assistant', text: reply }]);
+    } catch (e) {
+      setMessages(prev => [...prev, { role: 'assistant', text: 'माफ गर्नुहोस्, फेरि प्रयास गर्नुहोस्।' }]);
+    } finally {
+      setIsTyping(false);
     }
   };
 
@@ -107,7 +107,13 @@ export const AssistantWidget: React.FC<Props> = ({ language, userProfile }) => {
               className="flex-1 px-3 py-2 rounded-2xl border border-indigo-100 text-sm outline-none focus:ring-2 focus:ring-indigo-200"
               onKeyDown={e => e.key === 'Enter' && handleSend()}
             />
-            <button onClick={handleSend} className="px-4 py-2 rounded-2xl bg-indigo-500 text-white text-sm font-black shadow">Send</button>
+            <button
+              onClick={handleSend}
+              disabled={isTyping || !input.trim()}
+              className="px-4 py-2 rounded-2xl bg-indigo-500 text-white text-sm font-black shadow disabled:opacity-40"
+            >
+              {isTyping ? '...' : 'Send'}
+            </button>
           </div>
         </div>
       )}
