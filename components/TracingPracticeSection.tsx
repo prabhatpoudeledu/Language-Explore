@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { fetchAlphabet, speakText, stopAllAudio, triggerHaptic, unlockAudio, resolveVoiceId } from '../services/geminiService';
-import { LanguageCode, LetterData, UserProfile } from '../types';
+import { fetchAlphabet, fetchNumbers, speakText, stopAllAudio, triggerHaptic, unlockAudio, resolveVoiceId } from '../services/geminiService';
+import { LanguageCode, LetterData, NumberData, UserProfile } from '../types';
 
 interface Props {
   language: LanguageCode;
@@ -11,32 +11,43 @@ interface Props {
 
 export const TracingPracticeSection: React.FC<Props> = ({ language, userProfile, showTranslation, addXp }) => {
   const [letters, setLetters] = useState<LetterData[]>([]);
+  const [numbers, setNumbers] = useState<NumberData[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedLetter, setSelectedLetter] = useState<LetterData | null>(null);
+  const [selectedNumber, setSelectedNumber] = useState<NumberData | null>(null);
   const [selectedCombo, setSelectedCombo] = useState<string | null>(null);
   const [showAlphabetList, setShowAlphabetList] = useState(true);
   const [showMixer, setShowMixer] = useState(true);
   const [isDrawing, setIsDrawing] = useState(false);
+  const [activeCategory, setActiveCategory] = useState<'vowel' | 'consonant' | 'number'>('vowel');
+  const [completedTraces, setCompletedTraces] = useState<Set<string>>(new Set());
+  const [traceStatus, setTraceStatus] = useState<'idle' | 'success' | 'fail'>('idle');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const guideCanvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const sectionTopRef = useRef<HTMLDivElement>(null);
   const voiceId = resolveVoiceId(userProfile);
 
-  const traceColor = userProfile.avatar === '👦' || userProfile.gender === 'male'
-    ? '#60a5fa'
-    : '#d946ef';
+  const traceColor = '#1f2937';
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       try {
-        const data = await fetchAlphabet(language);
-        setLetters(data);
-        setSelectedLetter(data[0] || null);
+        const [alpha, nums] = await Promise.all([
+          fetchAlphabet(language),
+          fetchNumbers(language)
+        ]);
+        setLetters(alpha);
+        const smallNumbers = nums.filter(n => n.value >= 0 && n.value <= 9);
+        setNumbers(smallNumbers);
+        const firstVowel = alpha.find(l => l.type === 'Vowel') || alpha[0] || null;
+        setSelectedLetter(firstVowel);
+        setSelectedNumber(smallNumbers[0] || null);
         setSelectedCombo(null);
         setShowAlphabetList(true);
         setShowMixer(true);
+        setActiveCategory('vowel');
       } finally {
         setLoading(false);
       }
@@ -51,7 +62,9 @@ export const TracingPracticeSection: React.FC<Props> = ({ language, userProfile,
     if (!gctx) return;
 
     gctx.clearRect(0, 0, guideCanvasRef.current.width, guideCanvasRef.current.height);
-    const traceText = selectedCombo || selectedLetter?.char || '';
+    const traceText = activeCategory === 'number'
+      ? selectedNumber?.numeral || ''
+      : (selectedCombo || selectedLetter?.char || '');
     if (!traceText) return;
 
     const width = guideCanvasRef.current.width;
@@ -88,15 +101,54 @@ export const TracingPracticeSection: React.FC<Props> = ({ language, userProfile,
     resize();
     window.addEventListener('resize', resize);
     return () => window.removeEventListener('resize', resize);
-  }, [selectedLetter, selectedCombo]);
+  }, [selectedLetter, selectedCombo, selectedNumber, activeCategory]);
 
   useEffect(() => {
     drawGuide();
-  }, [selectedLetter, selectedCombo]);
+  }, [selectedLetter, selectedCombo, selectedNumber, activeCategory]);
 
   const clearCanvas = () => {
     const ctx = canvasRef.current?.getContext('2d');
     if (ctx) ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    setTraceStatus('idle');
+  };
+
+  const getTraceKey = () => {
+    if (activeCategory === 'number' && selectedNumber) return `number:${selectedNumber.value}`;
+    if (activeCategory !== 'number' && selectedLetter) return `letter:${selectedLetter.char}`;
+    return '';
+  };
+
+  const checkTrace = () => {
+    if (!canvasRef.current || !guideCanvasRef.current) return;
+    const ctx = canvasRef.current.getContext('2d');
+    const gctx = guideCanvasRef.current.getContext('2d');
+    if (!ctx || !gctx) return;
+    const { width, height } = canvasRef.current;
+    const drawData = ctx.getImageData(0, 0, width, height).data;
+    const guideData = gctx.getImageData(0, 0, width, height).data;
+
+    let guidePixels = 0;
+    let overlapPixels = 0;
+    for (let i = 3; i < guideData.length; i += 4) {
+      const guideAlpha = guideData[i];
+      if (guideAlpha > 0) {
+        guidePixels++;
+        if (drawData[i] > 0) overlapPixels++;
+      }
+    }
+
+    const matchRatio = guidePixels === 0 ? 0 : overlapPixels / guidePixels;
+    if (matchRatio >= 0.6) {
+      setTraceStatus('success');
+      const key = getTraceKey();
+      if (key) {
+        setCompletedTraces(prev => new Set(prev).add(key));
+      }
+      addXp(5);
+    } else {
+      setTraceStatus('fail');
+    }
   };
 
   const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
@@ -136,9 +188,11 @@ export const TracingPracticeSection: React.FC<Props> = ({ language, userProfile,
 
   const handleSelectLetter = async (letter: LetterData) => {
     setSelectedLetter(letter);
+    setActiveCategory(letter.type === 'Vowel' ? 'vowel' : 'consonant');
     setSelectedCombo(null);
     setShowAlphabetList(false);
     setShowMixer(true);
+    setSelectedNumber(null);
     clearCanvas();
     sectionTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     triggerHaptic(5);
@@ -156,6 +210,21 @@ export const TracingPracticeSection: React.FC<Props> = ({ language, userProfile,
     triggerHaptic(5);
     await unlockAudio();
     speakText(comboChar, voiceId);
+    addXp(2);
+  };
+
+  const handleSelectNumber = async (item: NumberData) => {
+    setSelectedNumber(item);
+    setSelectedLetter(null);
+    setSelectedCombo(null);
+    setActiveCategory('number');
+    setShowAlphabetList(false);
+    setShowMixer(false);
+    clearCanvas();
+    sectionTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    triggerHaptic(5);
+    await unlockAudio();
+    speakText(item.word, voiceId);
     addXp(2);
   };
 
@@ -188,7 +257,7 @@ export const TracingPracticeSection: React.FC<Props> = ({ language, userProfile,
 
   if (loading) return <div className="p-10 text-center text-lg font-black animate-pulse text-indigo-500">{showTranslation ? 'Loading practice...' : 'अभ्यास लोड हुँदै...'}</div>;
 
-  if (!selectedLetter) return null;
+  if (!selectedLetter && !selectedNumber) return null;
 
   return (
     <div ref={sectionTopRef} className="max-w-6xl mx-auto animate-fadeIn pb-16 px-2 md:px-4">
@@ -201,10 +270,61 @@ export const TracingPracticeSection: React.FC<Props> = ({ language, userProfile,
         </p>
       </div>
 
+      <div className="bg-gradient-to-r from-slate-50 via-white to-slate-50 p-2 md:p-3 rounded-3xl shadow-sm border border-slate-100 mb-6 md:mb-8">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              setActiveCategory('vowel');
+              setSelectedNumber(null);
+              if (!selectedLetter || selectedLetter.type !== 'Vowel') {
+                const firstVowel = letters.find(l => l.type === 'Vowel') || null;
+                setSelectedLetter(firstVowel);
+              }
+              setSelectedCombo(null);
+              clearCanvas();
+            }}
+            className={`px-4 py-2 rounded-2xl text-xs font-black transition ${activeCategory === 'vowel' ? 'bg-white shadow text-slate-800' : 'text-slate-400'}`}
+          >
+            {showTranslation ? 'Vowels' : 'स्वर'}
+          </button>
+          <button
+            onClick={() => {
+              setActiveCategory('consonant');
+              setSelectedNumber(null);
+              if (!selectedLetter || selectedLetter.type !== 'Consonant') {
+                const firstConsonant = letters.find(l => l.type === 'Consonant') || null;
+                setSelectedLetter(firstConsonant);
+              }
+              setSelectedCombo(null);
+              clearCanvas();
+            }}
+            className={`px-4 py-2 rounded-2xl text-xs font-black transition ${activeCategory === 'consonant' ? 'bg-white shadow text-slate-800' : 'text-slate-400'}`}
+          >
+            {showTranslation ? 'Consonants' : 'व्यञ्जन'}
+          </button>
+          <button
+            onClick={() => {
+              setActiveCategory('number');
+              setSelectedLetter(null);
+              setSelectedCombo(null);
+              if (!selectedNumber && numbers.length > 0) {
+                setSelectedNumber(numbers[0]);
+              }
+              clearCanvas();
+            }}
+            className={`px-4 py-2 rounded-2xl text-xs font-black transition ${activeCategory === 'number' ? 'bg-white shadow text-slate-800' : 'text-slate-400'}`}
+          >
+            {showTranslation ? 'Numbers' : 'संख्या'}
+          </button>
+        </div>
+      </div>
+
       <div className="bg-white/90 backdrop-blur-md p-4 md:p-6 rounded-3xl shadow-xl border border-indigo-100 mb-6 md:mb-8">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm md:text-lg font-black text-indigo-600">
-            {showTranslation ? 'Alphabet List' : 'वर्णमाला सूची'}
+            {activeCategory === 'number'
+              ? (showTranslation ? 'Number List' : 'संख्या सूची')
+              : (showTranslation ? 'Alphabet List' : 'वर्णमाला सूची')}
           </h3>
           <button
             onClick={() => setShowAlphabetList(prev => !prev)}
@@ -213,22 +333,37 @@ export const TracingPracticeSection: React.FC<Props> = ({ language, userProfile,
             {showAlphabetList ? (showTranslation ? 'Hide' : 'लुकाउनुहोस्') : (showTranslation ? 'Show' : 'देखाउनुहोस्')}
           </button>
         </div>
-        {showAlphabetList && (
+        {showAlphabetList && activeCategory !== 'number' && (
           <div className="flex flex-wrap gap-2">
-            {letters.map((l, i) => (
+            {letters
+              .filter(l => (activeCategory === 'vowel' ? l.type === 'Vowel' : l.type === 'Consonant'))
+              .map((l, i) => (
+                <button
+                  key={i}
+                  onClick={() => handleSelectLetter(l)}
+                  className={`px-4 py-2 rounded-2xl font-black text-lg shadow-sm transition ${selectedLetter?.char === l.char ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'} ${completedTraces.has(`letter:${l.char}`) ? 'ring-2 ring-emerald-400' : ''}`}
+                >
+                  {l.char}
+                </button>
+            ))}
+          </div>
+        )}
+        {showAlphabetList && activeCategory === 'number' && (
+          <div className="flex flex-wrap gap-2">
+            {numbers.map((n) => (
               <button
-                key={i}
-                onClick={() => handleSelectLetter(l)}
-                className={`px-4 py-2 rounded-2xl font-black text-lg shadow-sm transition ${selectedLetter.char === l.char ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'}`}
+                key={n.value}
+                onClick={() => handleSelectNumber(n)}
+                className={`px-4 py-2 rounded-2xl font-black text-lg shadow-sm transition ${selectedNumber?.value === n.value ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'} ${completedTraces.has(`number:${n.value}`) ? 'ring-2 ring-emerald-400' : ''}`}
               >
-                {l.char}
+                {n.numeral}
               </button>
             ))}
           </div>
         )}
       </div>
 
-      {selectedLetter?.combos && selectedLetter.combos.length > 0 && (
+      {activeCategory !== 'number' && selectedLetter?.combos && selectedLetter.combos.length > 0 && (
         <div className="bg-white/90 backdrop-blur-md p-4 md:p-6 rounded-3xl shadow-xl border border-pink-100 mb-6 md:mb-8">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm md:text-lg font-black text-pink-600">
@@ -281,7 +416,7 @@ export const TracingPracticeSection: React.FC<Props> = ({ language, userProfile,
                     {hasNextLetter ? letters[currentLetterIndex + 1]?.char : ''} →
                   </button>
                 </div>
-                {selectedLetter?.combos && selectedLetter.combos.length > 0 && (
+                {activeCategory !== 'number' && selectedLetter?.combos && selectedLetter.combos.length > 0 && (
                   <div className="flex items-center gap-2">
                     <button
                       onClick={handlePrevCombo}
@@ -301,7 +436,7 @@ export const TracingPracticeSection: React.FC<Props> = ({ language, userProfile,
                 )}
               </div>
             </div>
-            <div ref={containerRef} className="relative w-full h-52 md:h-64 bg-gradient-to-b from-emerald-50 to-blue-50 rounded-3xl overflow-hidden border-4 border-emerald-300 shadow-2xl">
+            <div ref={containerRef} className="relative w-full h-52 md:h-64 bg-gradient-to-b from-emerald-50 to-blue-50 rounded-3xl overflow-hidden border-4 border-emerald-300 shadow-2xl touch-none overscroll-none">
               <canvas ref={guideCanvasRef} className="absolute inset-0 w-full h-full pointer-events-none opacity-45" />
               <canvas
                 ref={canvasRef}
@@ -314,10 +449,18 @@ export const TracingPracticeSection: React.FC<Props> = ({ language, userProfile,
                 onTouchMove={draw}
                 onTouchEnd={stopDrawing}
               />
+              {traceStatus !== 'idle' && (
+                <div className={`absolute inset-0 z-20 flex items-center justify-center ${traceStatus === 'success' ? 'bg-emerald-500/20' : 'bg-rose-500/20'}`}>
+                  <div className="text-5xl">{traceStatus === 'success' ? '✅' : '↻'}</div>
+                </div>
+              )}
             </div>
             <div className="flex justify-center mt-4">
               <button onClick={clearCanvas} className="px-6 py-2 rounded-2xl bg-pink-500 text-white font-black text-sm shadow-lg active:scale-95">
                 {showTranslation ? 'Clear' : 'सफा गर्नुहोस्'}
+              </button>
+              <button onClick={checkTrace} className="px-6 py-2 rounded-2xl bg-emerald-500 text-white font-black text-sm shadow-lg active:scale-95">
+                {showTranslation ? 'Check' : 'जाँच'}
               </button>
             </div>
         </div>

@@ -189,9 +189,10 @@ const App: React.FC = () => {
   const [showTranslation, setShowTranslation] = useState(true);
   const [wotd, setWotd] = useState<WordOfTheDayData | null>(null);
   const [wotdImage, setWotdImage] = useState<string | null>(null);
+  type FactLang = 'en' | 'np';
   const [funFact, setFunFact] = useState<string>('Tap for a cool fact!');
   const [factLoading, setFactLoading] = useState(false);
-  const [preloadedFacts, setPreloadedFacts] = useState<string[]>([]);
+  const [preloadedFacts, setPreloadedFacts] = useState<Record<FactLang, string[]>>({ en: [], np: [] });
   const [wotdKidsImage, setWotdKidsImage] = useState<string | null>(null);
 
   const [tempName, setTempName] = useState('');
@@ -319,47 +320,87 @@ const App: React.FC = () => {
     }
   }, [state, currentLang, userProfile]);
 
-  const refreshFunFact = async () => {
+    const factLang: FactLang = showTranslation ? 'en' : 'np';
+    const funFactPlaceholder = showTranslation ? 'Tap for a cool fact!' : 'रमाइलो तथ्यका लागि ट्याप गर्नुहोस्!';
+
+    const consumePreloadedFact = (langKey: FactLang): string | null => {
+      let nextFact: string | null = null;
+      setPreloadedFacts(prev => {
+        const list = prev[langKey];
+        if (list.length === 0) return prev;
+        nextFact = list[0];
+        return { ...prev, [langKey]: list.slice(1) };
+      });
+      return nextFact;
+    };
+
+    const refreshFunFact = async () => {
       setFactLoading(true);
 
       // Use preloaded fact if available
-      if (preloadedFacts.length > 0) {
-          const fact = preloadedFacts.shift()!;
-          setFunFact(fact);
+        const cachedFact = consumePreloadedFact(factLang);
+        if (cachedFact) {
+          setFunFact(cachedFact);
           setFactLoading(false);
           // Start preloading a new fact in background
-          preloadNextFact();
+          preloadNextFact(factLang);
           return;
-      }
+        }
 
       // Fallback to direct fetch
-      const fact = await fetchFunFact(currentLang);
+        const fact = await fetchFunFact(currentLang, factLang);
       setFunFact(fact);
       setFactLoading(false);
       // Start preloading facts in background
-      preloadNextFact();
+        preloadNextFact(factLang);
   };
 
-  const preloadNextFact = async () => {
+      const preloadNextFact = async (langKey: FactLang) => {
       try {
-          const fact = await fetchFunFact(currentLang);
-          setPreloadedFacts(prev => [...prev, fact]);
+          const fact = await fetchFunFact(currentLang, langKey);
+          setPreloadedFacts(prev => ({ ...prev, [langKey]: [...prev[langKey], fact] }));
       } catch (e) {
           // Silently fail for background preloading
       }
   };
 
+    const handlePlayWotd = async () => {
+      if (!wotd || !userProfile) return;
+      await handleUnlockAudio();
+      speakText(wotd.word, resolveVoiceId(userProfile));
+      triggerHaptic(5);
+    };
+
   // Preload facts when component mounts or language changes
-  useEffect(() => {
+    useEffect(() => {
       if (userProfile && currentLang) {
-          // Preload 3 facts in background
+        // Preload 3 facts in background for both EN and NP
+        setTimeout(() => {
+          preloadNextFact('en');
+          preloadNextFact('np');
           setTimeout(() => {
-              preloadNextFact();
-              setTimeout(() => preloadNextFact(), 1000);
-              setTimeout(() => preloadNextFact(), 2000);
+            preloadNextFact('en');
+            preloadNextFact('np');
+          }, 1000);
+          setTimeout(() => {
+            preloadNextFact('en');
+            preloadNextFact('np');
           }, 2000);
+        }, 2000);
       }
-  }, [currentLang, userProfile]);
+    }, [currentLang, userProfile]);
+
+    useEffect(() => {
+      if (!userProfile || !currentLang) return;
+      setFunFact(funFactPlaceholder);
+      const cachedFact = consumePreloadedFact(factLang);
+      if (cachedFact) {
+        setFunFact(cachedFact);
+        preloadNextFact(factLang);
+        return;
+      }
+      fetchFunFact(currentLang, factLang).then(setFunFact);
+    }, [showTranslation, currentLang, userProfile]);
 
   const handleUnlockAudio = async () => {
       const success = await unlockAudio();
@@ -729,7 +770,7 @@ const App: React.FC = () => {
   const voiceBusy = isVoiceLimited();
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 font-['Fredoka']">
+    <div className="min-h-screen flex flex-col bg-[#FFF7EF] font-['Fredoka']">
       <div className="bg-gradient-to-r from-red-600 via-red-500 to-blue-700 border-b-2 border-blue-800">
         <AppInfoHeader
           showControls
@@ -784,39 +825,83 @@ const App: React.FC = () => {
       <main className="flex-1 max-w-5xl mx-auto w-full p-4 md:p-6 pb-20 relative overflow-x-hidden">
         {state === AppState.HOME && (
             <div className="flex flex-col items-center py-4 animate-fadeIn">
+                 {/* Greeting */}
+                 <div className="w-full max-w-4xl mb-6 flex items-center justify-between">
+                   <div className="flex items-center gap-3">
+                     <div className="w-11 h-11 rounded-full bg-white shadow-sm flex items-center justify-center text-xl">
+                       {userProfile?.avatar || '🙂'}
+                     </div>
+                     <div>
+                       <div className="text-base md:text-lg font-black text-slate-800">
+                         {showTranslation ? `Namaste, ${userProfile?.name || 'Learner'}!` : `नमस्ते, ${userProfile?.name || 'विद्यार्थी'}!`}
+                       </div>
+                       <div className="text-xs md:text-sm font-bold text-slate-500">
+                         {showTranslation ? 'What shall we learn today?' : 'आज के सिक्ने?'}
+                       </div>
+                     </div>
+                   </div>
+                 </div>
+
+                 {/* Today's Word */}
+                 {wotd && (
+                   <div className="w-full max-w-4xl bg-emerald-500 text-white rounded-[28px] p-5 md:p-6 shadow-md mb-6 relative overflow-hidden">
+                     <div className="absolute right-4 top-4 opacity-30 text-4xl">📚</div>
+                     <div className="text-[10px] uppercase tracking-widest font-black opacity-90">Today's word</div>
+                     <div className="text-3xl md:text-4xl font-black mt-1">{wotd.word}</div>
+                     <div className="text-sm font-black opacity-90 mt-1">{wotd.english}</div>
+                     <div className="inline-block mt-2 bg-white/20 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">
+                       {wotd.transliteration}
+                     </div>
+                     <button
+                       onClick={handlePlayWotd}
+                       className="absolute right-4 bottom-4 w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-white"
+                       aria-label="Play word"
+                     >
+                       🔊
+                     </button>
+                   </div>
+                 )}
+
                  {/* Mobile Fun Fact Button */}
                  <div className="md:hidden w-full max-w-sm mb-6">
                      <button onClick={refreshFunFact} disabled={factLoading} className="w-full bg-white px-4 py-3 rounded-2xl shadow-lg border border-slate-100 items-center gap-3 hover:bg-slate-50 transition flex">
-                        <span className={`text-lg ${factLoading ? 'animate-spin' : 'animate-bounce'}`}>{factLoading ? '⏳' : preloadedFacts.length > 0 ? '🍭' : '🔄'}</span>
+                        <span className={`text-lg ${factLoading ? 'animate-spin' : 'animate-bounce'}`}>{factLoading ? '⏳' : preloadedFacts[factLang].length > 0 ? '🍭' : '🔄'}</span>
                         <div className="flex-1 text-left">
                             <div className="text-xs font-bold text-gray-400 uppercase tracking-widest">Fun Fact</div>
-                            <div className={`text-sm font-bold text-gray-600 truncate ${factLoading ? 'opacity-30' : ''}`}>{funFact}</div>
+                            <div className={`text-sm font-bold text-gray-600 whitespace-normal break-words leading-snug ${factLoading ? 'opacity-30' : ''}`}>{funFact}</div>
                         </div>
-                        {preloadedFacts.length > 0 && !factLoading && (
-                            <span className="text-xs bg-green-500 text-white px-2 py-1 rounded-full font-black">{preloadedFacts.length}</span>
+                        {preloadedFacts[factLang].length > 0 && !factLoading && (
+                          <span className="text-xs bg-green-500 text-white px-2 py-1 rounded-full font-black">{preloadedFacts[factLang].length}</span>
                         )}
                      </button>
                  </div>
 
-                 <div className="mb-8" />
-                 <div className="grid grid-cols-2 md:grid-cols-6 gap-3 md:gap-4 w-full px-2">
+                 <div className="w-full max-w-4xl">
+                   <div className="text-lg font-black text-slate-800 mb-3">Learning Areas</div>
+                 </div>
+                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 md:gap-4 w-full px-2">
                     {[
-                        { s: AppState.ALPHABET, i: '🌈', t: showTranslation ? currentLangConfig.menu.alphabetEn : currentLangConfig.menu.alphabet, c: 'indigo' },
-                        { s: AppState.WORDS, i: '🧩', t: showTranslation ? currentLangConfig.menu.wordsEn : currentLangConfig.menu.words, c: 'emerald' },
-                        { s: AppState.VOCABULARY, i: '📚', t: showTranslation ? currentLangConfig.menu.vocabularyEn : currentLangConfig.menu.vocabulary, c: 'teal' },
-                        { s: AppState.NUMBERS, i: '🔢', t: showTranslation ? currentLangConfig.menu.numbersEn : currentLangConfig.menu.numbers, c: 'cyan' },
-                        { s: AppState.PHRASES, i: '🧁', t: showTranslation ? currentLangConfig.menu.phrasesEn : currentLangConfig.menu.phrases, c: 'rose' },
-                        { s: AppState.TRACING, i: '✍️', t: showTranslation ? currentLangConfig.menu.tracingEn : currentLangConfig.menu.tracing, c: 'purple' },
-                        { s: AppState.PRACTICE, i: '🎙️', t: showTranslation ? currentLangConfig.menu.practiceEn : currentLangConfig.menu.practice, c: 'blue' },
-                        { s: AppState.DISCOVERY, i: '🔭', t: showTranslation ? currentLangConfig.menu.discoveryEn : currentLangConfig.menu.discovery, c: 'amber' }
+                        { s: AppState.ALPHABET, i: '✍️', labelEn: currentLangConfig.menu.alphabetEn, labelNp: currentLangConfig.menu.alphabet, bg: 'bg-[#FDE1DF]' },
+                        { s: AppState.NUMBERS, i: '🔢', labelEn: currentLangConfig.menu.numbersEn, labelNp: currentLangConfig.menu.numbers, bg: 'bg-[#DDF4F1]' },
+                        { s: AppState.VOCABULARY, i: '📚', labelEn: currentLangConfig.menu.vocabularyEn, labelNp: currentLangConfig.menu.vocabulary, bg: 'bg-[#E6E1FA]' },
+                        { s: AppState.PHRASES, i: '💬', labelEn: currentLangConfig.menu.phrasesEn, labelNp: currentLangConfig.menu.phrases, bg: 'bg-[#DFF1FF]' },
+                        { s: AppState.WORDS, i: '🧩', labelEn: currentLangConfig.menu.wordsEn, labelNp: currentLangConfig.menu.words, bg: 'bg-[#FFE9CC]' },
+                        { s: AppState.TRACING, i: '✏️', labelEn: currentLangConfig.menu.tracingEn, labelNp: currentLangConfig.menu.tracing, bg: 'bg-[#FFDCE6]' },
+                        { s: AppState.PRACTICE, i: '🎙️', labelEn: currentLangConfig.menu.practiceEn, labelNp: currentLangConfig.menu.practice, bg: 'bg-[#DFF7E8]' },
+                        { s: AppState.DISCOVERY, i: '🏔️', labelEn: currentLangConfig.menu.discoveryEn, labelNp: currentLangConfig.menu.discovery, bg: 'bg-[#FFE0D1]' }
                     ].map((btn, i) => (
                         <button
                             key={i}
                             onClick={async () => { await handleUnlockAudio(); setState(btn.s); }}
-                            className={`bg-white p-4 md:p-6 shadow-sm transition border-b-4 border-${btn.c}-500 text-center flex flex-col items-center justify-center rounded-3xl active:translate-y-1 active:border-b-0 group`}
+                            className={`${btn.bg} p-4 md:p-5 shadow-sm transition text-left flex flex-col justify-between rounded-[26px] active:translate-y-0.5 group min-h-[120px]`}
                         >
-                            <div className="text-4xl md:text-5xl group-hover:scale-110 transition">{btn.i}</div>
-                            <h3 className="text-sm md:text-base font-black text-gray-800 mt-2 tracking-tight">{btn.t}</h3>
+                            <div className="w-9 h-9 rounded-2xl bg-white/70 flex items-center justify-center text-xl">
+                              {btn.i}
+                            </div>
+                            <div className="mt-3">
+                              <div className="text-sm font-black text-slate-800">{btn.labelEn}</div>
+                              <div className="text-[10px] font-black text-slate-500">{btn.labelNp}</div>
+                            </div>
                         </button>
                     ))}
                  </div>

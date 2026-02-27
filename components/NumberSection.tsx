@@ -21,9 +21,7 @@ export const NumberSection: React.FC<Props> = ({ language, userProfile, showTran
   const sectionTopRef = useRef<HTMLDivElement>(null);
   const voiceId = resolveVoiceId(userProfile);
 
-  const traceColor = userProfile.avatar === '👦' || userProfile.gender === 'male'
-    ? '#60a5fa'
-    : '#d946ef';
+  const traceColor = '#1f2937';
 
   useEffect(() => {
     const load = async () => {
@@ -288,7 +286,7 @@ export const NumberSection: React.FC<Props> = ({ language, userProfile, showTran
         </div>
         <div
           ref={containerRef}
-          className="relative w-full h-[240px] md:h-[320px] bg-white rounded-3xl border border-dashed border-pink-200 overflow-hidden"
+          className="relative w-full h-[240px] md:h-[320px] bg-white rounded-3xl border border-dashed border-pink-200 overflow-hidden touch-none overscroll-none"
         >
           <canvas
             ref={guideCanvasRef}
@@ -296,7 +294,7 @@ export const NumberSection: React.FC<Props> = ({ language, userProfile, showTran
           />
           <canvas
             ref={canvasRef}
-            className="absolute inset-0"
+            className="absolute inset-0 touch-none"
             onMouseDown={startDrawing}
             onMouseUp={stopDrawing}
             onMouseLeave={stopDrawing}

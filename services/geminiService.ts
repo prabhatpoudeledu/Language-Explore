@@ -775,14 +775,15 @@ export const generateItemImage = async (itemName: string): Promise<string | null
     } catch (e) { return null; }
 };
 
-export const fetchFunFact = async (lang: LanguageCode): Promise<string> => {
-    const cacheKey = `${lang}_funfact`;
+export const fetchFunFact = async (lang: LanguageCode, outputLang: 'en' | 'np'): Promise<string> => {
+    const cacheKey = `${lang}_funfact_${outputLang}`;
     const cached = appCache.get(cacheKey);
     if (cached) return cached;
     try {
+        const responseLang = outputLang === 'np' ? 'Nepali (Devanagari)' : 'English';
         const response = await generateContentWithRetry({
             model: "gemini-3-flash-preview",
-            contents: `One short fact about ${getLangName(lang)} for kids.`
+            contents: `One short, cool fact about Nepal for kids. Respond in ${responseLang}.`
         });
         const fact = response.text || "Discovery is magic!";
         appCache.set(cacheKey, fact, 3600); 

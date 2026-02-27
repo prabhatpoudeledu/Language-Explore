@@ -29,15 +29,14 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
   const [playingChar, setPlayingChar] = useState<string | null>(null);
   const [playingComboChar, setPlayingComboChar] = useState<string | null>(null);
   const [isComboGroupPlaying, setIsComboGroupPlaying] = useState(false);
+  const [activeType, setActiveType] = useState<'Vowel' | 'Consonant'>('Vowel');
   const cancelPlaybackRef = useRef(false);
 
   const [exampleImageSrc, setExampleImageSrc] = useState<string>('');
 
   const isEnglishMode = showTranslation;
   const voiceId = resolveVoiceId(userProfile);
-  const traceColor = userProfile.avatar === '👦' || userProfile.gender === 'male'
-    ? '#60a5fa'
-    : '#d946ef';
+  const traceColor = '#1f2937';
 
   const resizeCanvases = () => {
     if (!canvasRef.current || !guideCanvasRef.current || !containerRef.current) return;
@@ -573,7 +572,7 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
                   {selectedExample ? (isEnglishMode ? '(शब्द लेख्नुहोस्)' : '(Trace the Word)') : (isEnglishMode ? '(अक्षर लेख्नुहोस्)' : '(Trace the Letter)')} ✨
                 </span>
               </h3>
-              <div ref={containerRef} className="relative w-full max-w-5xl h-52 md:h-64 bg-gradient-to-b from-emerald-50 to-blue-50 rounded-3xl overflow-hidden border-4 md:border-6 border-emerald-300 shadow-2xl">
+              <div ref={containerRef} className="relative w-full max-w-5xl h-52 md:h-64 bg-gradient-to-b from-emerald-50 to-blue-50 rounded-3xl overflow-hidden border-4 md:border-6 border-emerald-300 shadow-2xl touch-none overscroll-none">
                 {/* Faint solid guide */}
                 <canvas
                   ref={guideCanvasRef}
@@ -673,52 +672,61 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
   }
 
   // List view
+  const activeLetters = letters.filter(l => l.type === activeType);
+  const activeColor = activeType === 'Vowel' ? 'pink' : 'indigo';
+
   return (
     <div className="pb-16 animate-fadeIn px-2">
-      <div className="flex flex-col items-center mb-10 text-center">
-        <h2 className="text-3xl md:text-4xl font-black text-gray-800 mb-2 tracking-tighter">
-          {showTranslation ? 'Alphabet' : 'वर्णमाला'} 🖌️
+      <div className="flex flex-col items-center mb-6 text-center">
+        <h2 className="text-2xl md:text-3xl font-black text-gray-800 mb-2 tracking-tighter">
+          {showTranslation ? 'Nepali Letters' : 'नेपाली अक्षर'}
         </h2>
-        <p className="text-sm text-indigo-400 font-bold bg-white px-6 py-2 rounded-full shadow-sm border">
-          {showTranslation ? 'Tap a letter bubble!' : 'अक्षर बबलमा ट्याप गर्नुहोस्!'}
+        <div className="bg-white rounded-2xl p-1 flex items-center gap-2 shadow-sm border border-slate-100">
+          <button
+            onClick={() => setActiveType('Vowel')}
+            className={`px-4 py-2 rounded-xl text-sm font-black transition ${activeType === 'Vowel' ? 'bg-white shadow text-slate-800' : 'text-slate-400'}`}
+          >
+            {showTranslation ? 'Vowels' : 'स्वर'}
+          </button>
+          <button
+            onClick={() => setActiveType('Consonant')}
+            className={`px-4 py-2 rounded-xl text-sm font-black transition ${activeType === 'Consonant' ? 'bg-white shadow text-slate-800' : 'text-slate-400'}`}
+          >
+            {showTranslation ? 'Consonants' : 'व्यञ्जन'}
+          </button>
+        </div>
+        <p className="text-xs text-slate-400 font-bold mt-3">
+          {showTranslation ? 'Tap a letter to hear its sound' : 'अक्षर थिचेर आवाज सुन्नुहोस्'}
         </p>
       </div>
 
-      <div className="space-y-10 max-w-5xl mx-auto">
-        {['Vowel', 'Consonant'].map(type => {
-          const list = letters.filter(l => l.type === type);
-          if (list.length === 0) return null;
-          const color = type === 'Vowel' ? 'pink' : 'indigo';
-          return (
-            <section key={type}>
-              <div className="flex items-center gap-4 mb-6">
-                <button
-                  onClick={() => playLetterGroup(type as 'Vowel' | 'Consonant')}
-                  disabled={isGroupPlaying}
-                  className={`bg-${color}-500 text-white px-6 py-1.5 rounded-full font-black shadow-md text-sm border-b-4 border-${color}-700 active:scale-95 transition ${isGroupPlaying ? 'opacity-70 cursor-not-allowed' : 'hover:brightness-110'}`}
-                >
-                  {isGroupPlaying && groupPlayingType === type
-                    ? (isEnglishMode ? `Playing ${type}s...` : `${type === 'Vowel' ? 'स्वर' : 'व्यञ्जन'} बज्दै...`)
-                    : `${type}s`}
-                </button>
-                <div className={`h-1.5 bg-${color}-100 flex-1 rounded-full shadow-inner`}></div>
-              </div>
-              <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-3 md:gap-4">
-                {list.map((l, i) => (
-                  <button
-                    key={i}
-                    onClick={() => handleSelect(l)}
-                    className={`bg-white aspect-square rounded-[25px] md:rounded-[35px] shadow-sm border-b-4 border-${color}-50 flex flex-col items-center justify-center transition-all transform hover:scale-110 active:translate-y-2 group relative ${lastClickedChar === l.char ? 'animate-card-pop' : ''} ${playingChar === l.char ? `ring-4 ring-${color}-400 shadow-xl scale-110` : ''}`}
-                  >
-                    {cachedSounds.has(l.char) && <div className="absolute -top-1 -right-1 text-lg drop-shadow-sm animate-bounce">✨</div>}
-                    <span className="text-3xl md:text-4xl font-black text-gray-800 leading-none">{l.char}</span>
-                    <span className="text-[7px] text-indigo-200 font-black mt-1 uppercase">{l.transliteration}</span>
-                  </button>
-                ))}
-              </div>
-            </section>
-          );
-        })}
+      <div className="max-w-5xl mx-auto">
+        <div className="flex items-center gap-3 mb-4">
+          <button
+            onClick={() => playLetterGroup(activeType)}
+            disabled={isGroupPlaying}
+            className={`bg-${activeColor}-500 text-white px-4 py-1.5 rounded-full font-black shadow-md text-xs border-b-4 border-${activeColor}-700 active:scale-95 transition ${isGroupPlaying ? 'opacity-70 cursor-not-allowed' : 'hover:brightness-110'}`}
+          >
+            {isGroupPlaying && groupPlayingType === activeType
+              ? (isEnglishMode ? `Playing ${activeType}s...` : `${activeType === 'Vowel' ? 'स्वर' : 'व्यञ्जन'} बज्दै...`)
+              : (activeType === 'Vowel' ? (showTranslation ? 'Play Vowels' : 'स्वर बजाउनुहोस्') : (showTranslation ? 'Play Consonants' : 'व्यञ्जन बजाउनुहोस्'))}
+          </button>
+          <div className={`h-1 bg-${activeColor}-100 flex-1 rounded-full`} />
+        </div>
+
+        <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-3">
+          {activeLetters.map((l, i) => (
+            <button
+              key={i}
+              onClick={() => handleSelect(l)}
+              className={`bg-white aspect-square rounded-[22px] shadow-sm border border-slate-100 flex flex-col items-center justify-center transition-all active:scale-95 relative ${lastClickedChar === l.char ? 'animate-card-pop' : ''} ${playingChar === l.char ? `ring-2 ring-${activeColor}-400` : ''}`}
+            >
+              {cachedSounds.has(l.char) && <div className="absolute -top-1 -right-1 text-sm">✨</div>}
+              <span className="text-2xl md:text-3xl font-black text-slate-800 leading-none">{l.char}</span>
+              <span className="text-[8px] text-slate-300 font-black mt-1 uppercase">{l.transliteration}</span>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
