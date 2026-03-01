@@ -19,11 +19,12 @@ export const WordBuilder: React.FC<Props> = ({ language, userProfile, showTransl
   const [loading, setLoading] = useState(true);
   const [showNepali, setShowNepali] = useState(false);
   const [batchLoading, setBatchLoading] = useState(false);
+    const [comboStreak, setComboStreak] = useState(0);
 
   const langConfig = LANGUAGES.find(l => l.code === language)!;
 
   const isEnglishMode = showTranslation;
-    const voiceId = resolveVoiceId(userProfile);
+    const voiceId = resolveVoiceId();
 
   const shuffleArray = (array: string[]): string[] => {
     const shuffled = [...array];
@@ -93,18 +94,21 @@ export const WordBuilder: React.FC<Props> = ({ language, userProfile, showTransl
     setUserSelection([]);
     setIsCorrect(null);
     setShowNepali(false);
+        setComboStreak(0);
   };
 
   const checkAnswer = () => {
     const formed = userSelection.join('');
     if (formed === current.word) {
         setIsCorrect(true);
+        setComboStreak(prev => prev + 1);
         speakText(isEnglishMode ? `Correct! It's spelled ${current.word}.` : `सही! यो ${current.word} लेखिन्छ।`, voiceId);
         triggerHaptic([10, 5, 10]);
         addXp(10);
         completeWord(current.word);
     } else {
         setIsCorrect(false);
+        setComboStreak(0);
         speakText(isEnglishMode ? "That's not quite right. Try again!" : "त्यो ठीक भएन। फेरि प्रयास गर्नुहोस्!", voiceId);
         setTimeout(() => setIsCorrect(null), 1000);
         setUserSelection([]);
@@ -153,8 +157,13 @@ export const WordBuilder: React.FC<Props> = ({ language, userProfile, showTransl
                     <span className="text-2xl">🧩</span>
                     <span className="font-bold text-emerald-700 tracking-wider">{isEnglishMode ? 'LEVEL' : 'स्तर'} {userProfile.completedWords.length + 1}</span>
                 </div>
-                <div className="text-emerald-300 font-bold uppercase tracking-[0.2em] text-xs">
-                    {currentIdx + 1} / {challenges.length}
+                <div className="flex items-center gap-3">
+                    <div className="text-emerald-300 font-bold uppercase tracking-[0.2em] text-xs">
+                        {currentIdx + 1} / {challenges.length}
+                    </div>
+                    <div className="px-3 py-1 rounded-full bg-amber-100 text-amber-700 text-[10px] font-black uppercase tracking-widest">
+                        {isEnglishMode ? 'Streak' : 'लगातार'} {comboStreak}
+                    </div>
                 </div>
             </div>
 

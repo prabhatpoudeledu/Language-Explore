@@ -17,7 +17,7 @@ export const PhrasebookSection: React.FC<Props> = ({ language, userProfile, show
     const [translateInput, setTranslateInput] = useState('');
     const [isTranslating, setIsTranslating] = useState(false);
     const [latestTranslation, setLatestTranslation] = useState<PhraseData | null>(null);
-    const voiceId = resolveVoiceId(userProfile);
+    const voiceId = resolveVoiceId();
     const isEnglishMode = showTranslation;
 
     useEffect(() => {

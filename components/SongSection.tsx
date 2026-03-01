@@ -22,7 +22,7 @@ export const SongSection: React.FC<Props> = ({ language, userProfile, showTransl
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [songs, setSongs] = useState<SongData[]>([]);
   const [loading, setLoading] = useState(false);
-    const voiceId = resolveVoiceId(userProfile);
+    const voiceId = resolveVoiceId();
 
   useEffect(() => {
     setSelectedCategory(null);

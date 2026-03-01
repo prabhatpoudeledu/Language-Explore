@@ -14,7 +14,7 @@ interface Props {
 }
 
 export const NepalMap: React.FC<Props> = ({ language, userProfile, addXp, showTranslation }) => {
-    const voiceId = resolveVoiceId(userProfile);
+    const voiceId = resolveVoiceId();
     const [selectedPlace, setSelectedPlace] = useState<TravelDiscovery | null>(null);
     const [placeImage, setPlaceImage] = useState<string | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);

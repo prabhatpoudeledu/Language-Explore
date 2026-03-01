@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { triggerHaptic, speakText, resolveVoiceId } from '../services/geminiService';
+import { triggerHaptic, speakText, resolveVoiceId, generateQuizQuestions, generateWordScrambles, fetchQuizContent } from '../services/geminiService';
 import { LanguageCode, UserProfile, LANGUAGES } from '../types';
 
 interface Props {
@@ -12,12 +12,14 @@ interface Props {
 
 type PuzzleType = 'memory' | 'word-scramble' | 'quiz' | 'matching';
 
-interface PuzzleItem {
+interface MemoryCard {
     id: number;
+    pairId: number;
     text: string;
     english: string;
     icon: string;
-    matched: boolean;
+    isFlipped: boolean;
+    isMatched: boolean;
 }
 
 interface QuizQuestion {
@@ -42,9 +44,12 @@ interface WordScrambleItem {
 
 export const PuzzleSection: React.FC<Props> = ({ language, userProfile, showTranslation, addXp }) => {
     const [currentPuzzle, setCurrentPuzzle] = useState<PuzzleType>('memory');
-    const [deck, setDeck] = useState<PuzzleItem[]>([]);
-    const [selectedId, setSelectedId] = useState<number | null>(null);
-    const [solvedCount, setSolvedCount] = useState(0);
+    const [memoryDeck, setMemoryDeck] = useState<MemoryCard[]>([]);
+    const [memorySelected, setMemorySelected] = useState<number[]>([]);
+    const [memoryMoves, setMemoryMoves] = useState(0);
+    const [memoryMatches, setMemoryMatches] = useState(0);
+    const [memoryLocked, setMemoryLocked] = useState(false);
+    const [memoryStreak, setMemoryStreak] = useState(0);
     const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
     const [currentQuizIndex, setCurrentQuizIndex] = useState(0);
     const [quizScore, setQuizScore] = useState(0);
@@ -57,13 +62,32 @@ export const PuzzleSection: React.FC<Props> = ({ language, userProfile, showTran
     const [matchingPairs, setMatchingPairs] = useState<Array<{id: number, text: string, english: string, type: 'nepali' | 'english', matched: boolean}>>([]);
     const [matchingSelected, setMatchingSelected] = useState<number[]>([]);
     const [matchingScore, setMatchingScore] = useState(0);
+    const [quizLoading, setQuizLoading] = useState(false);
+    const [scrambleLoading, setScrambleLoading] = useState(false);
+    const [aiError, setAiError] = useState('');
+    const isAiBusy = quizLoading || scrambleLoading;
+
+    const readAiCache = <T,>(key: string): T | null => {
+        try {
+            const raw = localStorage.getItem(key);
+            return raw ? (JSON.parse(raw) as T) : null;
+        } catch {
+            return null;
+        }
+    };
+
+    const writeAiCache = (key: string, value: unknown) => {
+        try {
+            localStorage.setItem(key, JSON.stringify(value));
+        } catch (e) {}
+    };
+
+    const buildAiKey = (type: string) => `ai_puzzle_${language}_${type}`;
 
     const langConfig = LANGUAGES.find(l => l.code === language)!;
-    const voiceId = resolveVoiceId(userProfile);
+    const voiceId = resolveVoiceId();
 
-    // Initialize quiz questions
-    useEffect(() => {
-        const questions: QuizQuestion[] = [
+    const defaultQuizQuestions: QuizQuestion[] = [
             {
                 id: 1,
                 question: 'सगरमाथा कहाँ अवस्थित छ?',
@@ -115,8 +139,28 @@ export const PuzzleSection: React.FC<Props> = ({ language, userProfile, showTran
                 factEn: 'The one-horned rhinoceros is Nepal\'s national animal and can be found in Chitwan National Park!'
             }
         ];
-        setQuizQuestions(questions);
-    }, []);
+
+    // Initialize quiz questions
+    useEffect(() => {
+        const load = async () => {
+            const remote = await fetchQuizContent(language);
+            if (remote && remote.length > 0) {
+                setQuizQuestions(remote.map((q, idx) => ({
+                    id: q.id || idx + 1,
+                    question: q.question,
+                    questionEn: q.questionEn,
+                    options: q.options,
+                    optionsEn: q.optionsEn,
+                    correctAnswer: q.correctAnswer,
+                    fact: q.fact,
+                    factEn: q.factEn
+                })));
+                return;
+            }
+            setQuizQuestions(defaultQuizQuestions);
+        };
+        load();
+    }, [language]);
 
     // Initialize word scrambles
     useEffect(() => {
@@ -165,17 +209,111 @@ export const PuzzleSection: React.FC<Props> = ({ language, userProfile, showTran
         setWordScrambles(scrambles);
     }, []);
 
+    const refreshQuiz = async () => {
+        setQuizLoading(true);
+        setAiError('');
+        try {
+            const cacheKey = buildAiKey('quiz');
+            const cached = readAiCache<QuizQuestion[]>(cacheKey);
+            if (cached && cached.length > 0) {
+                setQuizQuestions(cached);
+                setCurrentQuizIndex(0);
+                setQuizScore(0);
+                return;
+            }
+            const generated = await generateQuizQuestions(language, 5);
+            if (generated.length > 0) {
+                const mapped: QuizQuestion[] = generated.map((q, idx) => ({
+                    id: idx + 1,
+                    question: q.questionNative,
+                    questionEn: q.questionEn,
+                    options: q.optionsNative,
+                    optionsEn: q.optionsEn,
+                    correctAnswer: q.correctIndex,
+                    fact: q.factNative,
+                    factEn: q.factEn
+                }));
+                setQuizQuestions(mapped);
+                setCurrentQuizIndex(0);
+                setQuizScore(0);
+                writeAiCache(cacheKey, mapped);
+            }
+        } catch (e) {
+            setAiError('AI is busy right now. Please wait and try again.');
+        } finally {
+            setQuizLoading(false);
+        }
+    };
+
+    const refreshScrambles = async () => {
+        setScrambleLoading(true);
+        setAiError('');
+        try {
+            const cacheKey = buildAiKey('scramble');
+            const cached = readAiCache<WordScrambleItem[]>(cacheKey);
+            if (cached && cached.length > 0) {
+                setWordScrambles(cached);
+                setCurrentScrambleIndex(0);
+                setScrambleInput('');
+                setScrambleSolved(false);
+                return;
+            }
+            const generated = await generateWordScrambles(language, 5);
+            if (generated.length > 0) {
+                const mapped: WordScrambleItem[] = generated.map((item, idx) => ({
+                    id: idx + 1,
+                    scrambled: item.scrambled,
+                    answer: item.answer,
+                    english: item.english,
+                    hint: item.hint,
+                    hintEn: item.hintEn
+                }));
+                setWordScrambles(mapped);
+                setCurrentScrambleIndex(0);
+                setScrambleInput('');
+                setScrambleSolved(false);
+                writeAiCache(cacheKey, mapped);
+            }
+        } catch (e) {
+            setAiError('AI is busy right now. Please wait and try again.');
+        } finally {
+            setScrambleLoading(false);
+        }
+    };
+
     const generateDeck = () => {
-        const items = langConfig.travelDiscoveries.slice(0, 12).map((d, i) => ({
-            id: i,
+        const pairs = langConfig.travelDiscoveries.slice(0, 6).map((d, i) => ({
+            pairId: i,
             text: d.titleNative,
             english: d.titleEn,
-            icon: d.icon,
-            matched: false
+            icon: d.icon
         }));
-        setDeck(items.sort(() => Math.random() - 0.5));
-        setSolvedCount(0);
-        setSelectedId(null);
+        const cards: MemoryCard[] = pairs.flatMap(item => ([
+            {
+                id: item.pairId * 2,
+                pairId: item.pairId,
+                text: item.text,
+                english: item.english,
+                icon: item.icon,
+                isFlipped: false,
+                isMatched: false
+            },
+            {
+                id: item.pairId * 2 + 1,
+                pairId: item.pairId,
+                text: item.text,
+                english: item.english,
+                icon: item.icon,
+                isFlipped: false,
+                isMatched: false
+            }
+        ]));
+        setMemoryDeck(cards.sort(() => Math.random() - 0.5));
+        setMemorySelected([]);
+        setMemoryMoves(0);
+        setMemoryMatches(0);
+        setMemoryLocked(false);
+        setMemoryStreak(0);
     };
 
     const generateMatchingPairs = () => {
@@ -194,21 +332,48 @@ export const PuzzleSection: React.FC<Props> = ({ language, userProfile, showTran
     }, [language]);
 
     const handleMemorySelect = (id: number) => {
-        if (deck.find(d => d.id === id)?.matched) return;
+        if (memoryLocked) return;
+        if (memorySelected.length >= 2) return;
+        const card = memoryDeck.find(c => c.id === id);
+        if (!card || card.isMatched || card.isFlipped) return;
 
         triggerHaptic(5);
-        const item = deck.find(d => d.id === id)!;
-        speakText(item.text, voiceId);
+        speakText(card.text, voiceId);
 
-        if (selectedId === null) {
-            setSelectedId(id);
-        } else if (selectedId === id) {
-            setSelectedId(null);
-        } else {
-            setDeck(prev => prev.map(p => p.id === id ? { ...p, matched: true } : p));
-            setSolvedCount(s => s + 1);
-            addXp(10);
-            setSelectedId(null);
+        setMemoryDeck(prev => prev.map(c => c.id === id ? { ...c, isFlipped: true } : c));
+
+        if (memorySelected.length === 0) {
+            setMemorySelected([id]);
+            return;
+        }
+
+        if (memorySelected.length === 1) {
+            const firstId = memorySelected[0];
+            const firstCard = memoryDeck.find(c => c.id === firstId);
+            setMemorySelected([firstId, id]);
+            setMemoryMoves(prev => prev + 1);
+            setMemoryLocked(true);
+
+            if (firstCard && firstCard.pairId === card.pairId) {
+                setMemoryDeck(prev => prev.map(c =>
+                    c.id === firstId || c.id === id ? { ...c, isMatched: true } : c
+                ));
+                setMemoryMatches(prev => prev + 1);
+                setMemoryStreak(prev => prev + 1);
+                addXp(15);
+                triggerHaptic(10);
+                setMemorySelected([]);
+                setMemoryLocked(false);
+            } else {
+                setMemoryStreak(0);
+                setTimeout(() => {
+                    setMemoryDeck(prev => prev.map(c =>
+                        c.id === firstId || c.id === id ? { ...c, isFlipped: false } : c
+                    ));
+                    setMemorySelected([]);
+                    setMemoryLocked(false);
+                }, 800);
+            }
         }
     };
 
@@ -291,23 +456,42 @@ export const PuzzleSection: React.FC<Props> = ({ language, userProfile, showTran
     const renderPuzzleContent = () => {
         switch (currentPuzzle) {
             case 'memory':
+                const totalPairs = Math.max(1, Math.floor(memoryDeck.length / 2));
+                const progress = Math.min(100, Math.round((memoryMatches / totalPairs) * 100));
                 return (
                     <div className="space-y-8">
                         <div className="text-center">
-                            <h3 className="text-3xl font-bold text-purple-600 mb-2">🧠 Memory Discovery</h3>
-                            <p className="text-gray-600">Tap tiles to discover Nepal's amazing places!</p>
+                            <h3 className="text-3xl font-black text-purple-600 mb-2">🧠 Memory Expedition</h3>
+                            <p className="text-gray-600 font-medium">Flip two cards. Match the same place to win treasures!</p>
                         </div>
 
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                            {deck.map((item) => (
+                        <div className="bg-white/90 border border-purple-100 rounded-3xl shadow-xl p-4 md:p-6 flex flex-col md:flex-row items-center justify-between gap-4">
+                            <div className="flex items-center gap-3">
+                                <div className="w-12 h-12 rounded-2xl bg-purple-100 text-purple-600 flex items-center justify-center text-2xl">🏔️</div>
+                                <div>
+                                    <div className="text-xs uppercase tracking-widest text-purple-400 font-black">Progress</div>
+                                    <div className="text-lg font-black text-purple-700">{memoryMatches} / {totalPairs} pairs</div>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-3 text-sm font-black">
+                                <div className="px-4 py-2 rounded-2xl bg-indigo-50 text-indigo-600">Moves: {memoryMoves}</div>
+                                <div className="px-4 py-2 rounded-2xl bg-emerald-50 text-emerald-600">Streak: {memoryStreak}</div>
+                            </div>
+                            <div className="w-full md:w-64 h-3 bg-purple-100 rounded-full overflow-hidden">
+                                <div className="h-full bg-gradient-to-r from-purple-400 to-pink-500" style={{ width: `${progress}%` }}></div>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-3 sm:grid-cols-4 gap-3 md:gap-4">
+                            {memoryDeck.map((item) => (
                                 <button
                                     key={item.id}
                                     onClick={() => handleMemorySelect(item.id)}
-                                    className={`aspect-square rounded-3xl shadow-lg border-b-4 transition-all transform active:scale-95 flex flex-col items-center justify-center p-4
-                                        ${item.matched ? 'bg-gradient-to-br from-green-400 to-blue-500 border-green-600 text-white' : 'bg-gradient-to-br from-purple-400 to-pink-500 border-purple-600 text-white'}
+                                    className={`aspect-square rounded-3xl shadow-lg border-b-4 transition-all transform active:scale-95 flex flex-col items-center justify-center p-3 md:p-4
+                                        ${item.isMatched ? 'bg-gradient-to-br from-emerald-400 to-teal-500 border-emerald-600 text-white' : item.isFlipped ? 'bg-gradient-to-br from-purple-400 to-pink-500 border-purple-600 text-white' : 'bg-gradient-to-br from-slate-200 to-slate-100 border-slate-300 text-slate-400'}
                                     `}
                                 >
-                                    {item.matched ? (
+                                    {item.isFlipped || item.isMatched ? (
                                         <>
                                             <span className="text-4xl mb-2">{item.icon}</span>
                                             <p className="text-sm font-bold text-center leading-tight">{item.text}</p>
@@ -316,15 +500,19 @@ export const PuzzleSection: React.FC<Props> = ({ language, userProfile, showTran
                                             )}
                                         </>
                                     ) : (
-                                        <span className="text-3xl font-bold">?</span>
+                                        <span className="text-3xl font-black">✦</span>
                                     )}
-                                </button>
-                            ))}
-                        </div>
-
-                        <div className="text-center">
-                            <p className="text-lg font-bold text-purple-600">Discovered: {solvedCount} / {deck.length}</p>
-                        </div>
+                                <button
+                                    onClick={refreshQuiz}
+                                    disabled={isAiBusy}
+                                    className={`w-full md:w-auto px-6 py-3 rounded-2xl bg-indigo-500 text-white font-black text-sm shadow-lg transition active:scale-95 ${isAiBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                >
+                        {memoryMatches === totalPairs && (
+                            <div className="text-center bg-emerald-50 border border-emerald-200 rounded-3xl p-6 shadow-lg">
+                                <div className="text-3xl font-black text-emerald-600">🎉 Explorer Master!</div>
+                                <p className="text-sm text-emerald-700 mt-2 font-semibold">You found every pair. Tap reset to play a new round.</p>
+                            </div>
+                        )}
                     </div>
                 );
 
@@ -336,6 +524,20 @@ export const PuzzleSection: React.FC<Props> = ({ language, userProfile, showTran
                             <h3 className="text-3xl font-bold text-blue-600 mb-2">🧠 Nepal Quiz</h3>
                             <p className="text-gray-600">Test your knowledge about Nepal!</p>
                         </div>
+
+                        <div className="flex justify-center">
+                            <button
+                                onClick={refreshQuiz}
+                                disabled={quizLoading}
+                                className="px-6 py-3 rounded-2xl bg-blue-50 text-blue-700 font-bold shadow-sm hover:bg-blue-100 disabled:opacity-50"
+                            >
+                                {quizLoading ? 'Generating...' : '✨ Generate New Quiz'}
+                            <button
+                                onClick={refreshScrambles}
+                                disabled={isAiBusy}
+                                className={`w-full md:w-auto px-6 py-3 rounded-2xl bg-purple-500 text-white font-black text-sm shadow-lg transition active:scale-95 ${isAiBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            >
+                        )}
 
                         <div className="bg-white p-8 rounded-3xl shadow-xl border-2 border-blue-100">
                             <div className="text-center mb-6">
@@ -393,6 +595,19 @@ export const PuzzleSection: React.FC<Props> = ({ language, userProfile, showTran
                             <h3 className="text-3xl font-bold text-green-600 mb-2">🔤 Word Scramble</h3>
                             <p className="text-gray-600">Unscramble the Nepali words!</p>
                         </div>
+
+                        <div className="flex justify-center">
+                            <button
+                                onClick={refreshScrambles}
+                                disabled={scrambleLoading}
+                                className="px-6 py-3 rounded-2xl bg-green-50 text-green-700 font-bold shadow-sm hover:bg-green-100 disabled:opacity-50"
+                            >
+                                {scrambleLoading ? 'Generating...' : '✨ Generate New Scrambles'}
+                            </button>
+                        </div>
+                        {aiError && (
+                            <div className="text-center text-[10px] font-black text-rose-500">{aiError}</div>
+                        )}
 
                         <div className="bg-white p-8 rounded-3xl shadow-xl border-2 border-green-100">
                             <div className="text-center mb-6">

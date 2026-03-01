@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { askKidAssistant, speakText, stopAllAudio, triggerHaptic, resolveVoiceId } from '../services/geminiService';
+import { askTutorFlash, speakText, stopAllAudio, triggerHaptic, resolveVoiceId } from '../services/geminiService';
 import { LanguageCode, UserProfile } from '../types';
 
 interface Message {
@@ -10,9 +10,10 @@ interface Message {
 interface Props {
   language: LanguageCode;
   userProfile: UserProfile;
+  showTranslation: boolean;
 }
 
-export const AssistantWidget: React.FC<Props> = ({ language, userProfile }) => {
+export const AssistantWidget: React.FC<Props> = ({ language, userProfile, showTranslation }) => {
   const persistEnabled = userProfile.assistantPersist ?? true;
   const storageKey = useMemo(() => `assistant_chat_${userProfile.id}`, [userProfile.id]);
   const [isOpen, setIsOpen] = useState(false);
@@ -21,7 +22,7 @@ export const AssistantWidget: React.FC<Props> = ({ language, userProfile }) => {
     { role: 'assistant', text: 'नमस्ते! म तिमीको नेपाली साथी हुँ। के सिक्न मन छ?' }
   ]);
   const [isTyping, setIsTyping] = useState(false);
-  const voiceId = resolveVoiceId(userProfile);
+  const voiceId = resolveVoiceId();
 
   useEffect(() => {
     if (!persistEnabled) return;
@@ -55,6 +56,15 @@ export const AssistantWidget: React.FC<Props> = ({ language, userProfile }) => {
       .trim();
   };
 
+  const buildReplyText = (data: { answer: string; romanized?: string; syllables?: string[]; examples?: string[]; followUp?: string }) => {
+    let output = data.answer || '';
+    if (data.romanized) output += `\nRomanized: ${data.romanized}`;
+    if (data.syllables && data.syllables.length > 0) output += `\nSyllables: ${data.syllables.join('-')}`;
+    if (data.examples && data.examples.length > 0) output += `\nExamples: ${data.examples.join(', ')}`;
+    if (data.followUp) output += `\n${data.followUp}`;
+    return output.trim();
+  };
+
   const handleSend = async () => {
     const text = input.trim();
     if (!text || isTyping) return;
@@ -64,8 +74,8 @@ export const AssistantWidget: React.FC<Props> = ({ language, userProfile }) => {
     triggerHaptic(5);
 
     try {
-      const reply = await askKidAssistant(text, language);
-      setMessages(prev => [...prev, { role: 'assistant', text: reply }]);
+      const reply = await askTutorFlash(text, language, showTranslation ? 'en' : 'np');
+      setMessages(prev => [...prev, { role: 'assistant', text: buildReplyText(reply) }]);
     } catch (e) {
       setMessages(prev => [...prev, { role: 'assistant', text: 'माफ गर्नुहोस्, फेरि प्रयास गर्नुहोस्।' }]);
     } finally {
@@ -99,7 +109,23 @@ export const AssistantWidget: React.FC<Props> = ({ language, userProfile }) => {
             ))}
             {isTyping && <div className="text-xs text-slate-400 font-bold">...typing</div>}
           </div>
-          <div className="p-3 border-t border-indigo-50 flex gap-2">
+          <div className="p-3 border-t border-indigo-50">
+            <div className="flex flex-wrap gap-2 mb-3">
+              {[
+                showTranslation ? 'How to pronounce क?' : 'क कसरी उच्चारण गर्ने?',
+                showTranslation ? 'Give 3 words with क' : 'क बाट सुरु हुने ३ शब्द देऊ',
+                showTranslation ? 'Explain Dashain for kids' : 'दशैं बच्चालाई बुझाइदेऊ'
+              ].map((prompt, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setInput(prompt)}
+                  className="px-3 py-1 rounded-full bg-indigo-50 text-indigo-600 text-[10px] font-black"
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
             <input
               value={input}
               onChange={e => setInput(e.target.value)}
@@ -114,6 +140,7 @@ export const AssistantWidget: React.FC<Props> = ({ language, userProfile }) => {
             >
               {isTyping ? '...' : 'Send'}
             </button>
+            </div>
           </div>
         </div>
       )}

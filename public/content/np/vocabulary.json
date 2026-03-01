@@ -1,0 +1,585 @@
+[
+  {
+    "id": "colors",
+    "labelEn": "Colors",
+    "labelNp": "रङ",
+    "items": [
+      {
+        "english": "Red",
+        "nepali": "रातो",
+        "pronunciation": "rato"
+      },
+      {
+        "english": "Orange",
+        "nepali": "सुन्तला",
+        "pronunciation": "Suntalā"
+      },
+      {
+        "english": "Yellow",
+        "nepali": "पहेँलो",
+        "pronunciation": "pahelo"
+      },
+      {
+        "english": "Green",
+        "nepali": "हरियो",
+        "pronunciation": "hariyo"
+      },
+      {
+        "english": "Blue",
+        "nepali": "नीलो",
+        "pronunciation": "nilo"
+      },
+      {
+        "english": "Dark Blue",
+        "nepali": "गाढा नीलो",
+        "pronunciation": "gadha nilo"
+      },
+      {
+        "english": "Pink",
+        "nepali": "गुलाबी",
+        "pronunciation": "gulabi"
+      },
+      {
+        "english": "Brown",
+        "nepali": "खैरो",
+        "pronunciation": "khairo"
+      },
+      {
+        "english": "White",
+        "nepali": "सेतो",
+        "pronunciation": "seto"
+      },
+      {
+        "english": "Black",
+        "nepali": "कालो",
+        "pronunciation": "kalo"
+      },
+      {
+        "english": "Silver",
+        "nepali": "चाँदी",
+        "pronunciation": "chandi"
+      }
+    ]
+  },
+  {
+    "id": "food",
+    "labelEn": "Food",
+    "labelNp": "खाना",
+    "items": [
+      {
+        "english": "Dal Bhat",
+        "nepali": "दाल भात",
+        "pronunciation": "dal bhat"
+      },
+      {
+        "english": "Chowmein",
+        "nepali": "चौमिन",
+        "pronunciation": "chaumin"
+      },
+      {
+        "english": "Pizza",
+        "nepali": "पिज्जा",
+        "pronunciation": "pizza"
+      },
+      {
+        "english": "Pasta",
+        "nepali": "पास्ता",
+        "pronunciation": "pasta"
+      },
+      {
+        "english": "Macaroni",
+        "nepali": "म्याकरोनी",
+        "pronunciation": "macaroni"
+      },
+      {
+        "english": "Chicken Sizzler",
+        "nepali": "चिकन सिजलर",
+        "pronunciation": "chicken sizzler"
+      }
+    ]
+  },
+  {
+    "id": "fruits",
+    "labelEn": "Fruits",
+    "labelNp": "फलफूल",
+    "items": [
+      {
+        "english": "Pineapple",
+        "nepali": "भुईकटहर",
+        "pronunciation": "bhuikatihar"
+      },
+      {
+        "english": "Mango",
+        "nepali": "आँप",
+        "pronunciation": "aap"
+      },
+      {
+        "english": "Orange",
+        "nepali": "सुन्तला",
+        "pronunciation": "suntala"
+      },
+      {
+        "english": "Banana",
+        "nepali": "केरा",
+        "pronunciation": "kera"
+      },
+      {
+        "english": "Strawberry",
+        "nepali": "स्ट्रबेरी",
+        "pronunciation": "strawberry"
+      },
+      {
+        "english": "Grapes",
+        "nepali": "अंगुर",
+        "pronunciation": "angur"
+      },
+      {
+        "english": "Apple",
+        "nepali": "स्याउ",
+        "pronunciation": "syau"
+      },
+      {
+        "english": "Pomegranate",
+        "nepali": "अनार",
+        "pronunciation": "anar"
+      },
+      {
+        "english": "Peach",
+        "nepali": "आरु",
+        "pronunciation": "aru"
+      },
+      {
+        "english": "Litchi",
+        "nepali": "लिची",
+        "pronunciation": "lichi"
+      },
+      {
+        "english": "Papaya",
+        "nepali": "मेवा",
+        "pronunciation": "mewa"
+      },
+      {
+        "english": "Guava",
+        "nepali": "अम्बा",
+        "pronunciation": "amba"
+      },
+      {
+        "english": "Watermelon",
+        "nepali": "खर्बुजा",
+        "pronunciation": "kharbuja"
+      },
+      {
+        "english": "Sugarcane",
+        "nepali": "उखु",
+        "pronunciation": "ukhu"
+      },
+      {
+        "english": "Pear",
+        "nepali": "नासपाती",
+        "pronunciation": "naspati"
+      },
+      {
+        "english": "Plum",
+        "nepali": "आलुबखडा",
+        "pronunciation": "alubakhada"
+      },
+      {
+        "english": "Persimmon",
+        "nepali": "हलुवाबेद",
+        "pronunciation": "haluwabed"
+      },
+      {
+        "english": "Custard Apple",
+        "nepali": "शरीफा",
+        "pronunciation": "sharifa"
+      },
+      {
+        "english": "Kiwi",
+        "nepali": "किवी",
+        "pronunciation": "kiwi"
+      },
+      {
+        "english": "Jackfruit",
+        "nepali": "कटहर",
+        "pronunciation": "katahar"
+      }
+    ]
+  },
+  {
+    "id": "vegetables",
+    "labelEn": "Vegetables",
+    "labelNp": "तरकारी",
+    "items": [
+      {
+        "english": "Potato",
+        "nepali": "आलु",
+        "pronunciation": "alu"
+      },
+      {
+        "english": "Tomato",
+        "nepali": "गोलभेडा",
+        "pronunciation": "golbheda"
+      },
+      {
+        "english": "Onion",
+        "nepali": "प्याज",
+        "pronunciation": "pyaj"
+      },
+      {
+        "english": "Carrot",
+        "nepali": "गाजर",
+        "pronunciation": "gajar"
+      },
+      {
+        "english": "Cauliflower",
+        "nepali": "काउली",
+        "pronunciation": "kauli"
+      },
+      {
+        "english": "Cabbage",
+        "nepali": "बन्दा",
+        "pronunciation": "banda"
+      },
+      {
+        "english": "Cucumber",
+        "nepali": "काँक्रो",
+        "pronunciation": "kankro"
+      },
+      {
+        "english": "Eggplant",
+        "nepali": "भान्टा",
+        "pronunciation": "bhanta"
+      },
+      {
+        "english": "Broccoli",
+        "nepali": "ब्रोकली",
+        "pronunciation": "brokoli"
+      },
+      {
+        "english": "Spinach",
+        "nepali": "पालुङ्गो",
+        "pronunciation": "palungo"
+      }
+    ]
+  },
+  {
+    "id": "animals",
+    "labelEn": "Animals",
+    "labelNp": "जनावर",
+    "items": [
+      {
+        "english": "Cow",
+        "nepali": "गाई",
+        "pronunciation": "gai"
+      },
+      {
+        "english": "Dog",
+        "nepali": "कुकुर",
+        "pronunciation": "kukur"
+      },
+      {
+        "english": "Cat",
+        "nepali": "बिरालो",
+        "pronunciation": "biralo"
+      },
+      {
+        "english": "Goat",
+        "nepali": "बाख्रा",
+        "pronunciation": "bakhra"
+      },
+      {
+        "english": "Horse",
+        "nepali": "घोडा",
+        "pronunciation": "ghoda"
+      },
+      {
+        "english": "Tiger",
+        "nepali": "बाघ",
+        "pronunciation": "bagh"
+      },
+      {
+        "english": "Lion",
+        "nepali": "सिंह",
+        "pronunciation": "sinh"
+      },
+      {
+        "english": "Elephant",
+        "nepali": "हात्ती",
+        "pronunciation": "hatti"
+      },
+      {
+        "english": "Bear",
+        "nepali": "भालु",
+        "pronunciation": "bhalu"
+      },
+      {
+        "english": "Monkey",
+        "nepali": "बाँदर",
+        "pronunciation": "bandar"
+      },
+      {
+        "english": "Fish",
+        "nepali": "माछा",
+        "pronunciation": "macha"
+      },
+      {
+        "english": "Dolphin",
+        "nepali": "डल्फिन",
+        "pronunciation": "dolphin"
+      },
+      {
+        "english": "Shark",
+        "nepali": "शार्क",
+        "pronunciation": "shark"
+      },
+      {
+        "english": "Whale",
+        "nepali": "ह्वेल",
+        "pronunciation": "hwel"
+      }
+    ]
+  },
+  {
+    "id": "birds",
+    "labelEn": "Birds",
+    "labelNp": "चरा",
+    "items": [
+      {
+        "english": "Crow",
+        "nepali": "काग",
+        "pronunciation": "kag"
+      },
+      {
+        "english": "Sparrow",
+        "nepali": "भँगेरा",
+        "pronunciation": "bhangera"
+      },
+      {
+        "english": "Parrot",
+        "nepali": "सुगा",
+        "pronunciation": "suga"
+      },
+      {
+        "english": "Peacock",
+        "nepali": "मयूर",
+        "pronunciation": "mayur"
+      },
+      {
+        "english": "Pigeon",
+        "nepali": "परेवा",
+        "pronunciation": "parewa"
+      },
+      {
+        "english": "Eagle",
+        "nepali": "चील",
+        "pronunciation": "chil"
+      }
+    ]
+  },
+  {
+    "id": "insects",
+    "labelEn": "Insects",
+    "labelNp": "किरा",
+    "items": [
+      {
+        "english": "Ant",
+        "nepali": "कमिला",
+        "pronunciation": "kamila"
+      },
+      {
+        "english": "Bee",
+        "nepali": "मौरी",
+        "pronunciation": "mauri"
+      },
+      {
+        "english": "Butterfly",
+        "nepali": "पुतली",
+        "pronunciation": "putali"
+      },
+      {
+        "english": "Mosquito",
+        "nepali": "लामखुट्टे",
+        "pronunciation": "lamkhutte"
+      },
+      {
+        "english": "Fly",
+        "nepali": "झिँगा",
+        "pronunciation": "jhinga"
+      }
+    ]
+  },
+  {
+    "id": "flowers",
+    "labelEn": "Flowers",
+    "labelNp": "फूल",
+    "items": [
+      {
+        "english": "Rose",
+        "nepali": "गुलाब",
+        "pronunciation": "gulab"
+      },
+      {
+        "english": "Lotus",
+        "nepali": "कमल",
+        "pronunciation": "kamal"
+      },
+      {
+        "english": "Sunflower",
+        "nepali": "सूर्यमुखी",
+        "pronunciation": "suryamukhi"
+      },
+      {
+        "english": "Marigold",
+        "nepali": "सयपत्री",
+        "pronunciation": "sayapatri"
+      },
+      {
+        "english": "Jasmine",
+        "nepali": "चमेली",
+        "pronunciation": "chameli"
+      }
+    ]
+  },
+  {
+    "id": "toys",
+    "labelEn": "Toys",
+    "labelNp": "खेलौना",
+    "items": [
+      {
+        "english": "Ball",
+        "nepali": "बल",
+        "pronunciation": "bal"
+      },
+      {
+        "english": "Doll",
+        "nepali": "पुतली",
+        "pronunciation": "putali"
+      },
+      {
+        "english": "Teddy Bear",
+        "nepali": "टेडी बेयर",
+        "pronunciation": "teddy bear"
+      },
+      {
+        "english": "Toy Car",
+        "nepali": "खेलौना गाडी",
+        "pronunciation": "khelouna gadi"
+      },
+      {
+        "english": "Kite",
+        "nepali": "चङ्गा",
+        "pronunciation": "changa"
+      }
+    ]
+  },
+  {
+    "id": "vehicles",
+    "labelEn": "Vehicles",
+    "labelNp": "सवारी साधन",
+    "items": [
+      {
+        "english": "Car",
+        "nepali": "गाडी",
+        "pronunciation": "gadi"
+      },
+      {
+        "english": "Bus",
+        "nepali": "बस",
+        "pronunciation": "bas"
+      },
+      {
+        "english": "Bicycle",
+        "nepali": "साइकल",
+        "pronunciation": "cycle"
+      },
+      {
+        "english": "Motorcycle",
+        "nepali": "मोटरसाइकल",
+        "pronunciation": "motorbike"
+      },
+      {
+        "english": "Train",
+        "nepali": "रेल",
+        "pronunciation": "rail"
+      },
+      {
+        "english": "Airplane",
+        "nepali": "हवाईजहाज",
+        "pronunciation": "hawaijahaj"
+      }
+    ]
+  },
+  {
+    "id": "body_parts",
+    "labelEn": "Body Parts",
+    "labelNp": "शरीर अङ्ग",
+    "items": [
+      {
+        "english": "Head",
+        "nepali": "टाउको",
+        "pronunciation": "tauko"
+      },
+      {
+        "english": "Hair",
+        "nepali": "कपाल",
+        "pronunciation": "kapal"
+      },
+      {
+        "english": "Eye",
+        "nepali": "आँखा",
+        "pronunciation": "aankha"
+      },
+      {
+        "english": "Nose",
+        "nepali": "नाक",
+        "pronunciation": "nak"
+      },
+      {
+        "english": "Ear",
+        "nepali": "कान",
+        "pronunciation": "kan"
+      },
+      {
+        "english": "Mouth",
+        "nepali": "मुख",
+        "pronunciation": "mukh"
+      },
+      {
+        "english": "Teeth",
+        "nepali": "दाँत",
+        "pronunciation": "daant"
+      },
+      {
+        "english": "Hand",
+        "nepali": "हात",
+        "pronunciation": "hat"
+      },
+      {
+        "english": "Finger",
+        "nepali": "औँला",
+        "pronunciation": "aula"
+      },
+      {
+        "english": "Leg",
+        "nepali": "खुट्टा",
+        "pronunciation": "khutta"
+      },
+      {
+        "english": "Knee",
+        "nepali": "घुँडा",
+        "pronunciation": "ghuda"
+      },
+      {
+        "english": "Foot",
+        "nepali": "खुट्टा",
+        "pronunciation": "khutta"
+      }
+    ]
+  },
+  {
+    "id": "clothes",
+    "labelEn": "Clothes",
+    "labelNp": "लुगा",
+    "items": []
+  }
+]

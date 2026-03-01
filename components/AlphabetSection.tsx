@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { fetchAlphabet, speakText, triggerHaptic, stopAllAudio, getAudioVault, preCacheAlphabet, unlockAudio, geminiService, resolveVoiceId, tryPlayLocalSoundWithTransliteration, registerHtmlAudio, unregisterHtmlAudio } from '../services/geminiService';
+import { fetchAlphabet, speakText, triggerHaptic, stopAllAudio, getAudioVault, preCacheAlphabet, unlockAudio, geminiService, resolveVoiceId, tryPlayLocalSoundWithTransliteration, registerHtmlAudio, unregisterHtmlAudio, generateExampleWords, generateExampleSentences, generateSimpleStory, generatePronunciationHints, generateTracingSteps } from '../services/geminiService';
 import { LetterData, LanguageCode, UserProfile, LANGUAGES, ExampleWord } from '../types';
 
 interface Props {
@@ -16,6 +16,17 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
   const [selectedExample, setSelectedExample] = useState<ExampleWord | null>(null);
   const [isChecking, setIsChecking] = useState(false);
   const [checkResult, setCheckResult] = useState<'success' | 'fail' | null>(null);
+  const [traceEffect, setTraceEffect] = useState<'success' | 'fail' | null>(null);
+  const [traceLevel, setTraceLevel] = useState(0);
+  const [traceLetterCount, setTraceLetterCount] = useState(0);
+  const [aiExamples, setAiExamples] = useState<Array<{ native: string; romanized: string; english: string }>>([]);
+  const [aiSentences, setAiSentences] = useState<Array<{ native: string; romanized: string; english: string }>>([]);
+  const [aiStory, setAiStory] = useState<string>('');
+  const [aiHint, setAiHint] = useState<{ romanized: string; syllables: string[]; hint: string } | null>(null);
+  const [aiSteps, setAiSteps] = useState<Array<{ step: number; instruction: string }>>([]);
+  const [isAiLoading, setIsAiLoading] = useState(false);
+  const [aiError, setAiError] = useState('');
+  const [activeAiPanel, setActiveAiPanel] = useState<'examples' | 'sentences' | 'story' | 'hint' | 'steps' | null>(null);
   const [isSoundLoading, setIsSoundLoading] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -35,8 +46,38 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
   const [exampleImageSrc, setExampleImageSrc] = useState<string>('');
 
   const isEnglishMode = showTranslation;
-  const voiceId = resolveVoiceId(userProfile);
+  const voiceId = resolveVoiceId();
   const traceColor = '#1f2937';
+  const progressKey = `tracing_progress_v1_${language}`;
+
+  const loadProgress = () => {
+    try {
+      const raw = localStorage.getItem(progressKey);
+      if (!raw) return { letters: {} as Record<string, boolean>, numbers: {} as Record<string, boolean>, level: 0 };
+      const parsed = JSON.parse(raw) as { letters?: Record<string, boolean>; numbers?: Record<string, boolean>; level?: number };
+      return {
+        letters: parsed.letters || {},
+        numbers: parsed.numbers || {},
+        level: parsed.level || 0
+      };
+    } catch {
+      return { letters: {} as Record<string, boolean>, numbers: {} as Record<string, boolean>, level: 0 };
+    }
+  };
+
+  const saveProgress = (lettersMap: Record<string, boolean>, numbersMap: Record<string, boolean>) => {
+    const level = Object.keys(lettersMap).length;
+    localStorage.setItem(progressKey, JSON.stringify({ letters: lettersMap, numbers: numbersMap, level }));
+    setTraceLevel(level);
+    setTraceLetterCount(Object.keys(lettersMap).length);
+  };
+
+  const markLetterComplete = (char: string) => {
+    const progress = loadProgress();
+    if (progress.letters[char]) return;
+    const updatedLetters = { ...progress.letters, [char]: true };
+    saveProgress(updatedLetters, progress.numbers);
+  };
 
   const resizeCanvases = () => {
     if (!canvasRef.current || !guideCanvasRef.current || !containerRef.current) return;
@@ -105,9 +146,8 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
       try {
         const data = await fetchAlphabet(language);
         setLetters(data);
-        if (!selectedLetter && data.length > 0) {
-          setSelectedLetter(data[0]);
-        }
+        setSelectedLetter(null);
+        setSelectedExample(null);
         preCacheAlphabet(language, voiceId);
         const vault = getAudioVault();
         setCachedSounds(new Set(Object.keys(vault)));
@@ -124,6 +164,12 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
         clearInterval(interval);
     };
   }, [language, voiceId]);
+
+  useEffect(() => {
+    const stored = loadProgress();
+    setTraceLevel(Object.keys(stored.letters).length);
+    setTraceLetterCount(Object.keys(stored.letters).length);
+  }, [language]);
 
   const resetPlayback = () => {
     cancelPlaybackRef.current = true;
@@ -146,6 +192,7 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
     if (ctx) {
         ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
         setCheckResult(null);
+        setTraceEffect(null);
     }
   };
 
@@ -257,12 +304,166 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
     }
   };
 
+  const aiOutputLang = isEnglishMode ? 'en' : 'np';
+  const aiLetter = selectedLetter?.char || '';
+  const aiWord = selectedExample?.word || selectedLetter?.examples?.[0]?.word || '';
+
+  const readAiCache = <T,>(key: string): T | null => {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? (JSON.parse(raw) as T) : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const writeAiCache = (key: string, value: unknown) => {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch (e) {}
+  };
+
+  const buildAiKey = (type: string, target: string) => {
+    const safeTarget = encodeURIComponent(target || 'unknown');
+    return `ai_alpha_${language}_${aiOutputLang}_${type}_${safeTarget}`;
+  };
+
+  useEffect(() => {
+    setActiveAiPanel(null);
+    setAiError('');
+    setAiExamples([]);
+    setAiSentences([]);
+    setAiStory('');
+    setAiHint(null);
+    setAiSteps([]);
+  }, [aiLetter, aiWord, aiOutputLang]);
+
+  const handleAiExamples = async () => {
+    if (!aiLetter) return;
+    setActiveAiPanel('examples');
+    setIsAiLoading(true);
+    setAiError('');
+    setAiExamples([]);
+    try {
+      const cacheKey = buildAiKey('examples', aiLetter);
+      const cached = readAiCache<Array<{ native: string; romanized: string; english: string }>>(cacheKey);
+      if (cached && cached.length > 0) {
+        setAiExamples(cached);
+        return;
+      }
+      const items = await generateExampleWords(aiLetter, language, aiOutputLang, 5);
+      setAiExamples(items);
+      if (items.length > 0) writeAiCache(cacheKey, items);
+    } catch (e) {
+      setAiError(isEnglishMode ? 'AI is busy right now. Please wait and try again.' : 'एआई अहिले व्यस्त छ। कृपया केहीबेर पर्खनुहोस्।');
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  const handleAiSentences = async () => {
+    if (!aiWord) return;
+    setActiveAiPanel('sentences');
+    setIsAiLoading(true);
+    setAiError('');
+    setAiSentences([]);
+    try {
+      const cacheKey = buildAiKey('sentences', aiWord);
+      const cached = readAiCache<Array<{ native: string; romanized: string; english: string }>>(cacheKey);
+      if (cached && cached.length > 0) {
+        setAiSentences(cached);
+        return;
+      }
+      const items = await generateExampleSentences(aiWord, language, aiOutputLang, 3);
+      setAiSentences(items);
+      if (items.length > 0) writeAiCache(cacheKey, items);
+    } catch (e) {
+      setAiError(isEnglishMode ? 'AI is busy right now. Please wait and try again.' : 'एआई अहिले व्यस्त छ। कृपया केहीबेर पर्खनुहोस्।');
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  const handleAiStory = async () => {
+    const words = [aiWord || aiLetter].filter(Boolean);
+    if (words.length === 0) return;
+    const target = words.join('_');
+    setActiveAiPanel('story');
+    setIsAiLoading(true);
+    setAiError('');
+    setAiStory('');
+    try {
+      const cacheKey = buildAiKey('story', target);
+      const cached = readAiCache<{ story?: string }>(cacheKey);
+      if (cached?.story) {
+        setAiStory(cached.story);
+        return;
+      }
+      const data = await generateSimpleStory(words, language, aiOutputLang);
+      setAiStory(data.story || '');
+      if (data.story) writeAiCache(cacheKey, { story: data.story });
+    } catch (e) {
+      setAiError(isEnglishMode ? 'AI is busy right now. Please wait and try again.' : 'एआई अहिले व्यस्त छ। कृपया केहीबेर पर्खनुहोस्।');
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  const handleAiHint = async () => {
+    if (!aiLetter) return;
+    setActiveAiPanel('hint');
+    setIsAiLoading(true);
+    setAiError('');
+    setAiHint(null);
+    try {
+      const cacheKey = buildAiKey('hint', aiLetter);
+      const cached = readAiCache<{ romanized: string; syllables: string[]; hint: string }>(cacheKey);
+      if (cached) {
+        setAiHint(cached);
+        return;
+      }
+      const data = await generatePronunciationHints(aiLetter, language, aiOutputLang);
+      setAiHint(data);
+      writeAiCache(cacheKey, data);
+    } catch (e) {
+      setAiError(isEnglishMode ? 'AI is busy right now. Please wait and try again.' : 'एआई अहिले व्यस्त छ। कृपया केहीबेर पर्खनुहोस्।');
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  const handleAiSteps = async () => {
+    const target = selectedExample ? selectedExample.word : aiLetter;
+    if (!target) return;
+    setActiveAiPanel('steps');
+    setIsAiLoading(true);
+    setAiError('');
+    setAiSteps([]);
+    try {
+      const cacheKey = buildAiKey('steps', target);
+      const cached = readAiCache<Array<{ step: number; instruction: string }>>(cacheKey);
+      if (cached && cached.length > 0) {
+        setAiSteps(cached);
+        return;
+      }
+      const data = await generateTracingSteps(target, language, aiOutputLang);
+      setAiSteps(data.steps || []);
+      if ((data.steps || []).length > 0) writeAiCache(cacheKey, data.steps || []);
+    } catch (e) {
+      setAiError(isEnglishMode ? 'AI is busy right now. Please wait and try again.' : 'एआई अहिले व्यस्त छ। कृपया केहीबेर पर्खनुहोस्।');
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
   const handleSelect = async (l: LetterData) => {
     triggerHaptic(5);
     setLastClickedChar(l.char);
     setTimeout(() => setLastClickedChar(null), 300);
     setSelectedLetter(l);
     setSelectedExample(null);
+    setActiveAiPanel(null);
+    setAiError('');
     setCheckResult(null);
     clearCanvas();
 
@@ -326,6 +527,8 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
   const handleExampleClick = async (ex: ExampleWord) => {
     setSelectedExample(ex);
     setExampleImageSrc(ex.imageUrl || '');
+    setActiveAiPanel(null);
+    setAiError('');
     triggerHaptic(10);
     sectionTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
@@ -446,14 +649,20 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
 
     if (coverage > threshold) {
       setCheckResult('success');
+      setTraceEffect('success');
       speakText(isEnglishMode ? "Amazing! You did it!" : "वाह! तपाईंले गर्नुभयो!", voiceId);
       triggerHaptic([15, 10, 15]);
       addXp(selectedExample ? 20 : 30);
+      if (!selectedExample && selectedLetter) {
+        markLetterComplete(selectedLetter.char);
+      }
     } else {
       setCheckResult('fail');
+      setTraceEffect('fail');
       speakText(isEnglishMode ? "Great try! Let's do it again!" : "राम्रो प्रयास! फेरि गरौं!", voiceId);
       triggerHaptic(20);
     }
+    setTimeout(() => setTraceEffect(null), 1200);
   };
 
   if (loading) return <div className="p-10 text-center text-lg font-black animate-pulse text-indigo-500">{isEnglishMode ? 'Unpacking...' : 'प्याक खोल्दै...'} 📦</div>;
@@ -572,6 +781,10 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
                   {selectedExample ? (isEnglishMode ? '(शब्द लेख्नुहोस्)' : '(Trace the Word)') : (isEnglishMode ? '(अक्षर लेख्नुहोस्)' : '(Trace the Letter)')} ✨
                 </span>
               </h3>
+              <div className="flex flex-wrap items-center justify-center gap-2 mb-4">
+                <div className="px-4 py-1.5 rounded-full bg-amber-50 text-amber-600 text-xs font-black shadow-sm">{isEnglishMode ? 'Level' : 'स्तर'} {traceLevel}</div>
+                <div className="px-4 py-1.5 rounded-full bg-emerald-50 text-emerald-600 text-xs font-black shadow-sm">{isEnglishMode ? 'Letters' : 'अक्षर'} {traceLetterCount}</div>
+              </div>
               <div ref={containerRef} className="relative w-full max-w-5xl h-52 md:h-64 bg-gradient-to-b from-emerald-50 to-blue-50 rounded-3xl overflow-hidden border-4 md:border-6 border-emerald-300 shadow-2xl touch-none overscroll-none">
                 {/* Faint solid guide */}
                 <canvas
@@ -592,7 +805,34 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
                 />
                 {checkResult && (
                   <div className={`absolute inset-0 z-20 flex items-center justify-center backdrop-blur-md ${checkResult === 'success' ? 'bg-emerald-500/30' : 'bg-red-500/30'}`}>
-                    <div className="text-9xl animate-bounce">{checkResult === 'success' ? '🌟🌟🌟' : '😊'}</div>
+                    <div className={`text-9xl ${checkResult === 'success' ? 'animate-bounce' : 'animate-pulse'}`}>{checkResult === 'success' ? '🌟🌟🌟' : '😊'}</div>
+                  </div>
+                )}
+                {traceEffect === 'success' && (
+                  <div className="absolute inset-0 z-30 pointer-events-none">
+                    {[
+                      { left: '12%', top: '12%', delay: '0ms' },
+                      { left: '28%', top: '5%', delay: '100ms' },
+                      { left: '46%', top: '10%', delay: '200ms' },
+                      { left: '64%', top: '6%', delay: '150ms' },
+                      { left: '80%', top: '12%', delay: '250ms' },
+                      { left: '20%', top: '28%', delay: '80ms' },
+                      { left: '70%', top: '26%', delay: '120ms' }
+                    ].map((piece, idx) => (
+                      <span
+                        key={idx}
+                        className="absolute text-lg animate-bounce"
+                        style={{ left: piece.left, top: piece.top, animationDelay: piece.delay }}
+                      >
+                        ✨
+                      </span>
+                    ))}
+                    <div className="absolute inset-0 rounded-3xl border-4 border-emerald-300/60 animate-pulse"></div>
+                  </div>
+                )}
+                {traceEffect === 'fail' && (
+                  <div className="absolute inset-0 z-30 pointer-events-none">
+                    <div className="absolute inset-0 rounded-3xl border-4 border-rose-300/60 animate-pulse"></div>
                   </div>
                 )}
               </div>
@@ -612,6 +852,111 @@ export const AlphabetSection: React.FC<Props> = ({ language, userProfile, showTr
                   <span className="block text-[10px] md:text-xs opacity-90">{isChecking ? '' : (isEnglishMode ? '(जाँच गर्नुहोस्!)' : '(Check!)')}</span>
                 </button>
               </div>
+            </div>
+
+            <div className="bg-white/90 backdrop-blur-md p-4 md:p-6 rounded-3xl shadow-xl border border-amber-100">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm md:text-lg font-black text-amber-600">
+                  {isEnglishMode ? 'AI Magic' : 'एआई जादू'} ✨
+                </h3>
+                {isAiLoading && <span className="text-[10px] font-black text-amber-400">{isEnglishMode ? 'Loading...' : 'लोड हुँदै...'}</span>}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={handleAiExamples}
+                  disabled={isAiLoading}
+                  className={`px-3 py-2 rounded-xl bg-amber-50 text-amber-700 text-xs font-black shadow-sm ${isAiLoading ? 'opacity-60 cursor-not-allowed' : ''}`}
+                >
+                  {isEnglishMode ? 'More Examples' : 'थप उदाहरण'}
+                </button>
+                <button
+                  onClick={handleAiSentences}
+                  disabled={isAiLoading}
+                  className={`px-3 py-2 rounded-xl bg-indigo-50 text-indigo-700 text-xs font-black shadow-sm ${isAiLoading ? 'opacity-60 cursor-not-allowed' : ''}`}
+                >
+                  {isEnglishMode ? 'Simple Sentences' : 'सरल वाक्य'}
+                </button>
+                <button
+                  onClick={handleAiStory}
+                  disabled={isAiLoading}
+                  className={`px-3 py-2 rounded-xl bg-pink-50 text-pink-700 text-xs font-black shadow-sm ${isAiLoading ? 'opacity-60 cursor-not-allowed' : ''}`}
+                >
+                  {isEnglishMode ? 'Tiny Story' : 'सानो कथा'}
+                </button>
+                <button
+                  onClick={handleAiHint}
+                  disabled={isAiLoading}
+                  className={`px-3 py-2 rounded-xl bg-blue-50 text-blue-700 text-xs font-black shadow-sm ${isAiLoading ? 'opacity-60 cursor-not-allowed' : ''}`}
+                >
+                  {isEnglishMode ? 'Pronunciation Hints' : 'उच्चारण टिप्स'}
+                </button>
+                <button
+                  onClick={handleAiSteps}
+                  disabled={isAiLoading}
+                  className={`px-3 py-2 rounded-xl bg-emerald-50 text-emerald-700 text-xs font-black shadow-sm ${isAiLoading ? 'opacity-60 cursor-not-allowed' : ''}`}
+                >
+                  {isEnglishMode ? 'Writing Steps' : 'लेखन चरण'}
+                </button>
+              </div>
+
+              {aiError && activeAiPanel && (
+                <div className="mt-3 text-[10px] font-black text-rose-500">{aiError}</div>
+              )}
+
+              {activeAiPanel === 'examples' && aiExamples.length > 0 && (
+                <div className="mt-4">
+                  <div className="text-xs font-black text-amber-500 uppercase tracking-widest">{isEnglishMode ? 'Examples' : 'उदाहरण'}</div>
+                  <div className="mt-2 space-y-2">
+                    {aiExamples.map((ex, idx) => (
+                      <div key={idx} className="bg-amber-50 rounded-xl px-3 py-2 text-xs font-bold text-amber-900">
+                        {ex.native} · {ex.romanized} · {ex.english}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {activeAiPanel === 'sentences' && aiSentences.length > 0 && (
+                <div className="mt-4">
+                  <div className="text-xs font-black text-indigo-500 uppercase tracking-widest">{isEnglishMode ? 'Sentences' : 'वाक्य'}</div>
+                  <div className="mt-2 space-y-2">
+                    {aiSentences.map((item, idx) => (
+                      <div key={idx} className="bg-indigo-50 rounded-xl px-3 py-2 text-xs font-bold text-indigo-900">
+                        {item.native} · {item.romanized} · {item.english}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {activeAiPanel === 'story' && aiStory && (
+                <div className="mt-4">
+                  <div className="text-xs font-black text-pink-500 uppercase tracking-widest">{isEnglishMode ? 'Story' : 'कथा'}</div>
+                  <p className="mt-2 text-xs font-bold text-pink-900 bg-pink-50 rounded-xl px-3 py-2 leading-relaxed">{aiStory}</p>
+                </div>
+              )}
+
+              {activeAiPanel === 'hint' && aiHint && (
+                <div className="mt-4">
+                  <div className="text-xs font-black text-blue-500 uppercase tracking-widest">{isEnglishMode ? 'Pronunciation' : 'उच्चारण'}</div>
+                  <div className="mt-2 text-xs font-bold text-blue-900 bg-blue-50 rounded-xl px-3 py-2">
+                    <div>{aiHint.romanized}</div>
+                    {aiHint.syllables.length > 0 && <div>{aiHint.syllables.join('-')}</div>}
+                    <div>{aiHint.hint}</div>
+                  </div>
+                </div>
+              )}
+
+              {activeAiPanel === 'steps' && aiSteps.length > 0 && (
+                <div className="mt-4">
+                  <div className="text-xs font-black text-emerald-500 uppercase tracking-widest">{isEnglishMode ? 'Writing Steps' : 'लेखन चरण'}</div>
+                  <ol className="mt-2 space-y-2">
+                    {aiSteps.map(step => (
+                      <li key={step.step} className="text-xs font-bold text-emerald-900 bg-emerald-50 rounded-xl px-3 py-2">{step.step}. {step.instruction}</li>
+                    ))}
+                  </ol>
+                </div>
+              )}
             </div>
 
             {/* Picture */}

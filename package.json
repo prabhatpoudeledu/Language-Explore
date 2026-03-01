@@ -10,6 +10,7 @@
     "lint": "eslint . --ext .ts,.tsx",
     "test": "vitest run",
     "test:watch": "vitest",
+    "export:content": "tsc constants.ts --outDir .tmp-export --module ES2020 --target ES2020 --esModuleInterop --moduleResolution node --skipLibCheck && node scripts/export-content.mjs",
     "cap:sync": "npm run build && npx cap sync",
     "cap:android": "npm run build && npx cap sync android && npx cap open android",
     "cap:android:live": "npx cap run android -l --external"

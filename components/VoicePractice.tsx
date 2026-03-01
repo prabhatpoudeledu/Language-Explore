@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { GoogleGenAI } from "@google/genai";
-import { speakText, triggerHaptic, stopAllAudio, resolveVoiceId } from '../services/geminiService';
+import { speakText, triggerHaptic, stopAllAudio, resolveVoiceId, evaluateSpeechPronunciation } from '../services/geminiService';
 // Fix: Added LanguageCode import and updated Props to use it instead of 'np' literal
 import { UserProfile, LanguageCode, WordChallenge, PhraseData } from '../types';
 import { STATIC_WORDS, STATIC_PHRASES } from '../constants';
@@ -30,7 +29,7 @@ export const VoicePractice: React.FC<Props> = ({ language, userProfile, addXp })
     const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('easy');
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const chunksRef = useRef<Blob[]>([]);
-    const voiceId = resolveVoiceId(userProfile);
+    const voiceId = resolveVoiceId();
 
     // Generate random challenge from constants
     const generateRandomChallenge = (): VoiceChallenge => {
@@ -167,21 +166,11 @@ export const VoicePractice: React.FC<Props> = ({ language, userProfile, addXp })
 
     const evaluateSpeech = async (base64Audio: string) => {
         try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            const response = await ai.models.generateContent({
-                model: "gemini-3-flash-preview",
-                contents: [
-                    {
-                        parts: [
-                            { inlineData: { mimeType: 'audio/webm', data: base64Audio } },
-                            { text: `A child is learning Nepali. They said "${currentChallenge?.text}" (${currentChallenge?.english}). Rate their pronunciation 1-100 and provide a tiny encouraging 3-word comment. JSON: {"score": number, "comment": string}` }
-                        ]
-                    }
-                ],
-                config: { responseMimeType: "application/json" }
-            });
-
-            const result = JSON.parse(response.text || '{"score": 85, "comment": "Good job!"}');
+            const result = await evaluateSpeechPronunciation(
+                base64Audio,
+                currentChallenge?.text || '',
+                currentChallenge?.english || ''
+            );
             setFeedback(result);
 
             // Update streak and XP based on performance

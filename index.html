@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="google-signin-client_id" content="846343185208-374hm61eu50s8mghbss1ofsvbg2g7g8n.apps.googleusercontent.com" />
+    <meta name="google-signin-client_id" content="%VITE_GOOGLE_CLIENT_ID%" />
     <title>Nepali Kids Explorer</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -80,8 +80,13 @@
       // Initialize Google Identity Services when the script loads
       window.addEventListener('load', function() {
         if (window.google && window.google.accounts) {
+          var googleClientId = '%VITE_GOOGLE_CLIENT_ID%';
+          if (!googleClientId || googleClientId.indexOf('VITE_') === 0) {
+            console.warn('Missing VITE_GOOGLE_CLIENT_ID. Google Sign-In disabled.');
+            return;
+          }
           window.google.accounts.id.initialize({
-            client_id: '846343185208-374hm61eu50s8mghbss1ofsvbg2g7g8n.apps.googleusercontent.com',
+            client_id: googleClientId,
             callback: handleGoogleSignIn,
             auto_select: false,
             cancel_on_tap_outside: true

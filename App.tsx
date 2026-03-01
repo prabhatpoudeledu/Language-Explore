@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { AppState, LanguageCode, LANGUAGES, UserProfile, AVATARS, VOICES, AccountData, WordOfTheDayData } from './types';
+import { AppState, LanguageCode, LANGUAGES, UserProfile, AVATARS, AccountData, WordOfTheDayData } from './types';
 import { AlphabetSection } from './components/AlphabetSection';
 import { WordBuilder } from './components/WordBuilder';
 import { CultureHub } from './components/CultureHub';
@@ -198,18 +198,20 @@ const App: React.FC = () => {
   const [tempName, setTempName] = useState('');
   const [tempAccountName, setTempAccountName] = useState('');
   const [tempAvatar, setTempAvatar] = useState(AVATARS[0]);
-  const [tempVoice, setTempVoice] = useState(VOICES[0].id);
   const [tempGender, setTempGender] = useState<'male' | 'female'>('male');
   const [tempAssistantPersist, setTempAssistantPersist] = useState(true);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [soundEnabled, setSoundEnabledState] = useState(true);
   const [showMenuDropdown, setShowMenuDropdown] = useState(false);
   const [googleCredential, setGoogleCredential] = useState<string | null>(null);
+  const [aiGuardMessage, setAiGuardMessage] = useState('');
+  const [showAiGuard, setShowAiGuard] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
   const [contactSubject, setContactSubject] = useState('');
   const [contactMessage, setContactMessage] = useState('');
   const [contactStatus, setContactStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [contactError, setContactError] = useState('');
+  const aiGuardTimerRef = useRef<number | null>(null);
 
   // Listen for Google Sign-In events
   useEffect(() => {
@@ -241,6 +243,24 @@ const App: React.FC = () => {
     }
   }, [state]);
 
+  useEffect(() => {
+    const handleAiGuard = (event: any) => {
+      const message = event?.detail?.message || 'Please wait a moment.';
+      setAiGuardMessage(message);
+      setShowAiGuard(true);
+      if (aiGuardTimerRef.current) window.clearTimeout(aiGuardTimerRef.current);
+      aiGuardTimerRef.current = window.setTimeout(() => {
+        setShowAiGuard(false);
+      }, 2200);
+    };
+
+    window.addEventListener('ai-guard', handleAiGuard);
+    return () => {
+      window.removeEventListener('ai-guard', handleAiGuard);
+      if (aiGuardTimerRef.current) window.clearTimeout(aiGuardTimerRef.current);
+    };
+  }, []);
+
   const currentLangConfig = LANGUAGES.find(l => l.code === currentLang) || LANGUAGES[0];
   const theme = currentLangConfig.theme;
 
@@ -248,10 +268,10 @@ const App: React.FC = () => {
     const saved = localStorage.getItem('app_db_v12');
     if (saved) return JSON.parse(saved);
     const defaultDb = [{ 
-        email: 'test@gmail.com', 
-        password: '1234', 
-        name: 'Test Parent', 
-        profiles: [] 
+      email: 'parent@example.com', 
+      password: '1234', 
+      name: 'Test Parent', 
+      profiles: [] 
     }];
     saveDb(defaultDb);
     return defaultDb;
@@ -367,7 +387,7 @@ const App: React.FC = () => {
     const handlePlayWotd = async () => {
       if (!wotd || !userProfile) return;
       await handleUnlockAudio();
-      speakText(wotd.word, resolveVoiceId(userProfile));
+      speakText(wotd.word, resolveVoiceId());
       triggerHaptic(5);
     };
 
@@ -543,7 +563,7 @@ const App: React.FC = () => {
     setCurrentLang('np');
     setIsLoading(true);
     setLoadingP(0);
-    await initializeLanguageSession('np', resolveVoiceId(p), (msg, p) => { setLoadingMsg(msg); setLoadingP(p); });
+    await initializeLanguageSession('np', resolveVoiceId(), (msg, p) => { setLoadingMsg(msg); setLoadingP(p); });
     setIsLoading(false);
     setState(AppState.HOME);
     setFunFact('Tap for a cool fact!');
@@ -561,10 +581,10 @@ const App: React.FC = () => {
 
     let p: UserProfile;
     if (isEdit && userProfile) {
-      p = { ...userProfile, name: tempName, avatar: tempAvatar, voice: tempVoice, gender: tempGender, assistantPersist: tempAssistantPersist };
+      p = { ...userProfile, name: tempName, avatar: tempAvatar, voice: 'Kore', gender: tempGender, assistantPersist: tempAssistantPersist };
       updatedAccount.profiles = updatedAccount.profiles.map(old => old.id === userProfile.id ? p : old);
     } else {
-      p = { id: Date.now().toString(), name: tempName, avatar: tempAvatar, voice: tempVoice, gender: tempGender, autoPlaySound: true, assistantPersist: true, xp: 0, completedWords: [] };
+      p = { id: Date.now().toString(), name: tempName, avatar: tempAvatar, voice: 'Kore', gender: tempGender, autoPlaySound: true, assistantPersist: true, xp: 0, completedWords: [] };
       updatedAccount.profiles = [...updatedAccount.profiles, p];
     }
     
@@ -648,31 +668,19 @@ const App: React.FC = () => {
     </div>
   );
 
-    if (!audioUnlocked && (state === AppState.PROFILE_SELECT || state === AppState.HOME)) {
-      return (
-        <div className="fixed inset-0 bg-white z-[1000] flex flex-col animate-fadeIn">
-          <AppInfoHeader />
-          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
-            <div className="text-8xl mb-8 animate-bounce">🔈</div>
-            <h2 className="text-3xl font-black text-gray-800 mb-4">Magic Sound Check!</h2>
-            <p className="text-lg text-gray-400 font-bold mb-8 max-w-sm">Tap the big button below to wake up the voices on your phone!</p>
-            <button 
-            onClick={handleUnlockAudio}
-            onPointerUp={handleUnlockAudio}
-            className="bg-red-600 text-white px-12 py-5 rounded-[30px] font-black text-xl shadow-2xl border-b-8 border-red-800 active:translate-y-2 active:border-b-0 transition-all"
-            >
-              ✨ Start Learning!
-            </button>
-          </div>
-          <AppInfoFooter />
-        </div>
-      );
-    }
-
   if (state === AppState.PROFILE_SELECT) return (
     <div className="min-h-screen flex flex-col bg-amber-50 animate-fadeIn font-['Fredoka']">
       <AppInfoHeader />
       <div className="flex-1 flex flex-col items-center justify-center p-6">
+        {!audioUnlocked && (
+          <button
+            onClick={handleUnlockAudio}
+            onPointerUp={handleUnlockAudio}
+            className="mb-6 px-5 py-3 rounded-2xl bg-white border-2 border-dashed border-red-200 text-red-600 font-black text-xs uppercase tracking-[0.2em] shadow-sm"
+          >
+            Tap to Enable Sound
+          </button>
+        )}
         <div className="mb-8 text-center">
             <h1 className="text-3xl md:text-4xl font-black mb-1 text-gray-800 tracking-tighter">Hi, {account?.name}!</h1>
             <p className="text-red-600 font-bold text-lg">Pick your learner ✨</p>
@@ -701,7 +709,6 @@ const App: React.FC = () => {
         setTempAccountName(account.name || '');
         setTempName(userProfile?.name || '');
         setTempAvatar(userProfile?.avatar || AVATARS[0]);
-        setTempVoice(userProfile?.voice || VOICES[0].id);
       setTempAssistantPersist(userProfile?.assistantPersist ?? true);
     }
     
@@ -711,6 +718,16 @@ const App: React.FC = () => {
         <div className="flex-1 flex items-center justify-center p-4">
           <div className="bg-white p-6 md:p-8 rounded-[40px] shadow-2xl max-w-sm w-full border border-slate-100">
             <h2 className="text-2xl font-black mb-6 text-center text-gray-800 tracking-tighter">{edit ? 'Settings' : 'New Hero'}</h2>
+
+            {!audioUnlocked && (
+              <button
+                onClick={handleUnlockAudio}
+                onPointerUp={handleUnlockAudio}
+                className="mb-5 w-full px-4 py-3 rounded-2xl bg-slate-50 border-2 border-dashed border-red-200 text-red-600 font-black text-[10px] uppercase tracking-[0.2em] shadow-sm"
+              >
+                Tap to Enable Sound
+              </button>
+            )}
             
             <div className="space-y-4">
               <input type="text" value={tempName} onChange={e => setTempName(e.target.value)} placeholder="Kid's Name" className="w-full p-4 bg-white border-2 border-slate-100 rounded-2xl outline-none font-bold text-base focus:border-red-400 transition" />
@@ -720,18 +737,6 @@ const App: React.FC = () => {
                 <div className="flex gap-2 overflow-x-auto py-1 scrollbar-hide">
                   {AVATARS.map(av => (
                     <button key={av} onClick={() => setTempAvatar(av)} className={`text-3xl p-3 rounded-2xl transition-all ${tempAvatar === av ? 'bg-red-500 text-white scale-110 shadow-lg' : 'bg-slate-50 hover:bg-white'}`}>{av}</button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] font-black text-indigo-400 uppercase tracking-widest px-2">Voice Style</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {VOICES.map(v => (
-                    <button key={v.id} onClick={() => { setTempVoice(v.id); setTempGender(v.gender); }} className={`p-3 rounded-2xl border-2 flex flex-col items-center gap-1 transition-all ${tempVoice === v.id ? 'border-red-500 bg-red-50' : 'border-slate-100 grayscale opacity-60'}`}>
-                      <span className="text-2xl">{v.icon}</span>
-                      <span className="font-black text-[10px]">{v.label}</span>
-                    </button>
                   ))}
                 </div>
               </div>
@@ -771,6 +776,11 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#FFF7EF] font-['Fredoka']">
+      {showAiGuard && (
+        <div className="fixed top-4 left-1/2 z-[1100] -translate-x-1/2 rounded-full bg-slate-900 text-white px-4 py-2 text-xs font-black shadow-lg">
+          {aiGuardMessage}
+        </div>
+      )}
       <div className="bg-gradient-to-r from-red-600 via-red-500 to-blue-700 border-b-2 border-blue-800">
         <AppInfoHeader
           showControls
@@ -1011,7 +1021,7 @@ const App: React.FC = () => {
           setState(next);
         }}
       />
-      {userProfile && <AssistantWidget language={currentLang} userProfile={userProfile} />}
+      {userProfile && <AssistantWidget language={currentLang} userProfile={userProfile} showTranslation={showTranslation} />}
     </div>
   );
 };

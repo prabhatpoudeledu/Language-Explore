@@ -15,7 +15,7 @@ export const GeoSection: React.FC<Props> = ({ language, userProfile, showTransla
   const [generatingImages, setGeneratingImages] = useState<Record<string, boolean>>({});
 
   const langConfig = LANGUAGES.find(l => l.code === language)!;
-    const voiceId = resolveVoiceId(userProfile);
+    const voiceId = resolveVoiceId();
 
   useEffect(() => {
     // Check local storage for pre-cached images from initialize phase

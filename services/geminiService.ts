@@ -3,13 +3,66 @@ import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { UserProfile, VOICES, LetterData, WordChallenge, PhraseData, LanguageCode, LANGUAGES, WordOfTheDayData, AccountData, SongData, NumberData, VocabularyCategory } from '../types';
 import { STATIC_ALPHABET, STATIC_WORDS, STATIC_PHRASES, STATIC_NUMBERS, STATIC_VOCABULARY } from '../constants';
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const ENV = (typeof import.meta !== 'undefined' && (import.meta as any).env)
+    ? (import.meta as any).env
+    : {};
+const GEMINI_API_KEY = String(ENV.VITE_GEMINI_API_KEY || '');
+const GEMINI_PROXY_URL = String(ENV.VITE_GEMINI_PROXY_URL || '');
+const GEMINI_PROXY_TOKEN = String(ENV.VITE_GEMINI_PROXY_TOKEN || '');
+const CONTENT_BASE_URL = String(ENV.VITE_CONTENT_BASE_URL || '');
+const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
 const getLangName = (code: LanguageCode): string => {
     return LANGUAGES.find(l => l.code === code)?.name || "the language";
 };
 
 const CACHE_VERSION = 'v16';
+const AI_COOLDOWN_MS = 3000;
+const AI_GUARD_EVENT = 'ai-guard';
+const CLIENT_ID_KEY = 'ai_client_id_v1';
+let aiLastCall = 0;
+let aiInFlight = 0;
+
+const notifyAiGuard = (message: string) => {
+    if (typeof window === 'undefined') return;
+    try {
+        window.dispatchEvent(new CustomEvent(AI_GUARD_EVENT, { detail: { message } }));
+    } catch (e) {
+        console.warn('[AI] guard notify failed');
+    }
+};
+
+const getClientId = (): string => {
+    try {
+        let clientId = localStorage.getItem(CLIENT_ID_KEY);
+        if (!clientId) {
+            clientId = (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
+                ? crypto.randomUUID()
+                : `cid_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            localStorage.setItem(CLIENT_ID_KEY, clientId);
+        }
+        return clientId;
+    } catch (e) {
+        return 'cid_unknown';
+    }
+};
+
+const guardAiCall = (): (() => void) => {
+    const now = Date.now();
+    if (aiInFlight > 0) {
+        notifyAiGuard('AI is already working. Please wait.');
+        throw new Error('AI request in progress');
+    }
+    if (now - aiLastCall < AI_COOLDOWN_MS) {
+        notifyAiGuard('Please wait a moment before trying again.');
+        throw new Error('AI cooldown');
+    }
+    aiLastCall = now;
+    aiInFlight += 1;
+    return () => {
+        aiInFlight = Math.max(0, aiInFlight - 1);
+    };
+};
 
 class CacheManager {
     private prefix = `explorer_${CACHE_VERSION}_`;
@@ -253,9 +306,147 @@ const extractJSON = (text: string): any => {
     }
 };
 
+const FLASH_15 = "models/gemini-2.5-flash";
+const DEFAULT_TEXT_MODEL = FLASH_15;
+const FLASH_15_CANDIDATES = [
+    ENV.VITE_GEMINI_FLASH_MODEL,
+    "models/gemini-2.5-flash",
+    "models/gemini-flash-latest",
+    "models/gemini-2.0-flash",
+    "models/gemini-2.0-flash-001"
+].filter(Boolean) as string[];
+const normalizeStringArray = (value: unknown): string[] => {
+    if (!Array.isArray(value)) return [];
+    return value.filter(v => typeof v === 'string' && v.trim().length > 0);
+};
+
+const buildContentUrl = (path: string) => {
+    if (!CONTENT_BASE_URL) return path;
+    if (CONTENT_BASE_URL.endsWith('/') && path.startsWith('/')) return `${CONTENT_BASE_URL.slice(0, -1)}${path}`;
+    if (!CONTENT_BASE_URL.endsWith('/') && !path.startsWith('/')) return `${CONTENT_BASE_URL}/${path}`;
+    return `${CONTENT_BASE_URL}${path}`;
+};
+
+const fetchContentJson = async <T>(path: string, cacheKey: string, ttlSeconds: number = 604800): Promise<T | null> => {
+    const cached = appCache.get(cacheKey);
+    if (cached) return cached;
+    try {
+        const url = buildContentUrl(path);
+        const response = await fetch(url, { cache: 'no-store' });
+        if (!response.ok) return null;
+        const data = (await response.json()) as T;
+        appCache.set(cacheKey, data, ttlSeconds);
+        return data;
+    } catch (e) {
+        return null;
+    }
+};
+
+const getNepaliBarahkhari = (consonant: string, baseTrans: string) => [
+    { char: consonant + 'ा', sound: baseTrans + 'aa' },
+    { char: consonant + 'ि', sound: baseTrans + 'i' },
+    { char: consonant + 'ी', sound: baseTrans + 'ee' },
+    { char: consonant + 'ु', sound: baseTrans + 'u' },
+    { char: consonant + 'ू', sound: baseTrans + 'oo' },
+    { char: consonant + 'े', sound: baseTrans + 'e' },
+    { char: consonant + 'ै', sound: baseTrans + 'ai' },
+    { char: consonant + 'ो', sound: baseTrans + 'o' },
+    { char: consonant + 'ौ', sound: baseTrans + 'au' },
+    { char: consonant + 'ं', sound: baseTrans + 'am' },
+    { char: consonant + 'ः', sound: baseTrans + 'ah' }
+];
+
+const getBaseTransliteration = (char: string, transliteration: string) => {
+    const special: Record<string, string> = {
+        'ञ': 'yn',
+        'क्ष': 'ksh',
+        'त्र': 'tr',
+        'ज्ञ': 'gy'
+    };
+    if (special[char]) return special[char];
+    if (transliteration.endsWith('a')) return transliteration.slice(0, -1);
+    return transliteration;
+};
+
+const generateJsonWithCache = async <T>(
+    cacheKey: string,
+    prompt: string,
+    schema: any,
+    ttlSeconds: number = 3600,
+    model: string = FLASH_15
+): Promise<T> => {
+    if (!GEMINI_API_KEY && !GEMINI_PROXY_URL) {
+        console.error('[Gemini] Missing API key and proxy. Set GEMINI_API_KEY or VITE_GEMINI_PROXY_URL.');
+        throw new Error('Missing GEMINI_API_KEY');
+    }
+    const cached = appCache.get(cacheKey);
+    if (cached) return cached;
+    const modelsToTry = model ? [model, ...FLASH_15_CANDIDATES] : [...FLASH_15_CANDIDATES];
+    let lastError: any = null;
+    for (const candidate of modelsToTry) {
+        try {
+            const response = await generateContentWithRetry({
+                model: candidate,
+                contents: prompt,
+                config: {
+                    responseMimeType: "application/json",
+                    responseSchema: schema
+                }
+            });
+            const data = extractJSON(response.text) as T;
+            appCache.set(cacheKey, data, ttlSeconds);
+            return data;
+        } catch (error: any) {
+            lastError = error;
+            const message = error?.message || '';
+            const notFound = message.includes('not found') || message.includes('NOT_FOUND') || error?.status === 404;
+            console.error('[Gemini] generateJsonWithCache failed', {
+                cacheKey,
+                model: candidate,
+                message: message || 'unknown'
+            });
+            if (!notFound) break;
+        }
+    }
+    throw lastError;
+};
+
+const normalizeGeminiResponse = (data: any) => {
+    if (!data || typeof data !== 'object') return data;
+    if (!data.text) {
+        const textPart = data.candidates?.[0]?.content?.parts?.find((p: any) => typeof p?.text === 'string');
+        if (textPart?.text) data.text = textPart.text;
+    }
+    return data;
+};
+
+const callGeminiProxy = async (params: any): Promise<any> => {
+    if (!GEMINI_PROXY_URL) throw new Error('Missing VITE_GEMINI_PROXY_URL');
+    const clientId = getClientId();
+    const response = await fetch(GEMINI_PROXY_URL, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Client-Id': clientId,
+            ...(GEMINI_PROXY_TOKEN ? { 'X-Gemini-Proxy-Token': GEMINI_PROXY_TOKEN } : {})
+        },
+        body: JSON.stringify(params)
+    });
+    if (!response.ok) {
+        const text = await response.text();
+        const error = new Error(text || `Proxy error ${response.status}`) as any;
+        error.status = response.status;
+        throw error;
+    }
+    const data = await response.json();
+    return normalizeGeminiResponse(data);
+};
+
 const generateContentWithRetry = async (params: any, retries = 0): Promise<any> => {
+    const useProxy = !GEMINI_API_KEY && Boolean(GEMINI_PROXY_URL);
+    const releaseGuard = guardAiCall();
     try { 
-        const response = await ai.models.generateContent(params);
+        const response = useProxy ? await callGeminiProxy(params) : await ai.models.generateContent(params);
         audioManager.isRateLimited = false;
         return response;
     } catch (error: any) {
@@ -264,6 +455,8 @@ const generateContentWithRetry = async (params: any, retries = 0): Promise<any> 
             setTimeout(() => { audioManager.isRateLimited = false; }, 45000);
         }
         throw error;
+    } finally {
+        releaseGuard();
     }
 };
 
@@ -501,23 +694,8 @@ const VOICE_PAIR_MAP: Record<string, string> = {
     Kore: 'Puck'
 };
 
-export const resolveVoiceId = (profile?: UserProfile | null): string => {
-    if (!profile) return 'Kore';
-
-    const selected = VOICES.find(v => v.id === profile.voice)?.id || 'Kore';
-    const selectedGender = VOICES.find(v => v.id === selected)?.gender;
-
-    const avatarGender = profile.avatar === '👦'
-        ? 'male'
-        : profile.avatar === '👧'
-            ? 'female'
-            : profile.gender;
-
-    if (selectedGender && avatarGender && selectedGender !== avatarGender) {
-        return VOICE_PAIR_MAP[selected] || selected;
-    }
-
-    return selected;
+export const resolveVoiceId = (): string => {
+    return 'Kore';
 };
 
 export const speakText = async (text: string, voiceName: string = 'Kore'): Promise<void> => {
@@ -529,12 +707,6 @@ export const speakText = async (text: string, voiceName: string = 'Kore'): Promi
     if (!text || text.trim().length === 0) return;
 
         console.log('[TTS] speakText request', JSON.stringify({ text, voiceName }));
-    const playedLocal = await tryPlayLocalSound(text, voiceName);
-        if (playedLocal) {
-                console.log('[TTS] local audio played');
-                return;
-        }
-
     const audioKey = buildAudioKey(text, voiceName);
   
   const vault = getAudioVault();
@@ -552,7 +724,12 @@ export const speakText = async (text: string, voiceName: string = 'Kore'): Promi
         try { localStorage.setItem(AUDIO_VAULT_KEY, JSON.stringify(vault)); } catch (e) {}
     }
     if (audioManager.isRateLimited) {
-        console.log('[TTS] rate-limited, using browserSpeak');
+        console.log('[TTS] rate-limited, trying local audio first');
+        const playedLocal = await tryPlayLocalSound(text, voiceName);
+        if (playedLocal) {
+            console.log('[TTS] local audio played');
+            return;
+        }
         await browserSpeak(text);
         return;
     }
@@ -561,39 +738,42 @@ export const speakText = async (text: string, voiceName: string = 'Kore'): Promi
     try {
         const isNepali = /[\u0900-\u097F]/.test(text);
         const prompt = isNepali
-            ? `Pronounce slowly and gently in Nepali with clear syllables: ${text}`
-            : `Pronounce slowly and gently in English with clear syllables: ${text}`;
+            ? `Speak like a warm adult teacher. Pronounce slowly and clearly in Nepali with gentle syllable breaks: ${text}`
+            : `Speak like a warm adult teacher. Pronounce slowly and clearly in English with gentle syllable breaks: ${text}`;
 
-                console.log('[TTS] API call start', JSON.stringify({ model: "gemini-2.5-flash-preview-tts" }));
+        console.log('[TTS] API call start', JSON.stringify({ model: "models/gemini-2.5-flash-preview-tts" }));
         const response = await generateContentWithRetry({
-      model: "gemini-2.5-flash-preview-tts",
+            model: "models/gemini-2.5-flash-preview-tts",
             contents: [{ parts: [{ text: prompt }] }],
-      config: {
-        responseModalities: [Modality.AUDIO],
-        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceName } } },
-      },
-    });
-                console.log('[TTS] API call done', JSON.stringify({ hasAudio: Boolean(response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data) }));
-    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+            config: {
+                responseModalities: [Modality.AUDIO],
+                speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceName } } },
+            },
+        });
+        console.log('[TTS] API call done', JSON.stringify({ hasAudio: Boolean(response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data) }));
+        const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
         if (base64Audio) { 
-                saveToAudioVault(audioKey, base64Audio);
-                console.log('[TTS] cached audio', JSON.stringify({ audioKey, size: base64Audio.length }));
-        const htmlPlayed = await tryPlayBase64HtmlAudio(base64Audio);
-        if (htmlPlayed) {
-            console.log('[TTS] html audio played');
-            return;
+            saveToAudioVault(audioKey, base64Audio);
+            console.log('[TTS] cached audio', JSON.stringify({ audioKey, size: base64Audio.length }));
+            const htmlPlayed = await tryPlayBase64HtmlAudio(base64Audio);
+            if (htmlPlayed) {
+                console.log('[TTS] html audio played');
+                return;
+            }
+            const played = await playWithTimeout(base64Audio, 'api');
+            if (played) return;
         }
-        const played = await playWithTimeout(base64Audio, 'api');
-    if (!played) {
-        console.log('[TTS] API audio play failed, fallback to browserSpeak');
+        console.log('[TTS] API audio missing/failed, trying local audio');
+        const playedLocal = await tryPlayLocalSound(text, voiceName);
+        if (playedLocal) return;
+        console.log('[TTS] local audio failed, fallback to browserSpeak');
+        await browserSpeak(text);
+    } catch (error: any) {
+        console.log('[TTS] API call failed', JSON.stringify({ message: error?.message, status: error?.status, name: error?.name }));
+        const playedLocal = await tryPlayLocalSound(text, voiceName);
+        if (playedLocal) return;
         await browserSpeak(text);
     }
-    return; 
-    }
-        } catch (error: any) {
-                console.log('[TTS] API call failed', JSON.stringify({ message: error?.message, status: error?.status, name: error?.name }));
-                await browserSpeak(text);
-        }
 };
 
 export type BakeryStatus = 'idle' | 'baking' | 'ready';
@@ -621,7 +801,7 @@ const downloadTextSound = async (text: string, voice: string, prompt: string): P
 
     try {
         const response = await generateContentWithRetry({
-            model: "gemini-2.5-flash-preview-tts",
+            model: "models/gemini-2.5-flash-preview-tts",
             contents: [{ parts: [{ text: prompt }] }],
             config: {
                 responseModalities: [Modality.AUDIO],
@@ -714,7 +894,7 @@ export const fetchWordOfTheDay = async (lang: LanguageCode): Promise<WordOfTheDa
     if (cached) return cached;
     try {
         const response = await generateContentWithRetry({
-            model: "gemini-3-flash-preview",
+            model: DEFAULT_TEXT_MODEL,
             contents: `Simple Word of the Day for kids learning ${getLangName(lang)}.`,
             config: {
                 responseMimeType: "application/json",
@@ -782,7 +962,7 @@ export const fetchFunFact = async (lang: LanguageCode, outputLang: 'en' | 'np'):
     try {
         const responseLang = outputLang === 'np' ? 'Nepali (Devanagari)' : 'English';
         const response = await generateContentWithRetry({
-            model: "gemini-3-flash-preview",
+            model: DEFAULT_TEXT_MODEL,
             contents: `One short, cool fact about Nepal for kids. Respond in ${responseLang}.`
         });
         const fact = response.text || "Discovery is magic!";
@@ -791,13 +971,344 @@ export const fetchFunFact = async (lang: LanguageCode, outputLang: 'en' | 'np'):
     } catch (e) { return "Discovery is magic!"; }
 };
 
+export interface TutorReply {
+    answer: string;
+    romanized?: string;
+    syllables?: string[];
+    examples?: string[];
+    followUp?: string;
+}
+
+export const askTutorFlash = async (message: string, lang: LanguageCode, outputLang: 'en' | 'np'): Promise<TutorReply> => {
+    if (!message.trim()) return { answer: '' };
+    const langName = getLangName(lang);
+    const responseLang = outputLang === 'np' ? 'Nepali (Devanagari)' : 'English';
+    const prompt = `You are a friendly ${langName} tutor for kids aged 6-12. Respond in ${responseLang}. Keep it short and cheerful. If the user asks for pronunciation, include romanized and syllables. JSON only.\nUser: ${message}`;
+    const data = await generateJsonWithCache<TutorReply>(
+        `tutor_${lang}_${outputLang}_${message}`,
+        prompt,
+        {
+            type: Type.OBJECT,
+            properties: {
+                answer: { type: Type.STRING },
+                romanized: { type: Type.STRING },
+                syllables: { type: Type.ARRAY, items: { type: Type.STRING } },
+                examples: { type: Type.ARRAY, items: { type: Type.STRING } },
+                followUp: { type: Type.STRING }
+            },
+            required: ["answer"]
+        },
+        1800
+    );
+    return {
+        answer: data.answer || (outputLang === 'np' ? 'फेरि सोध्नुस्।' : 'Ask me again.'),
+        romanized: data.romanized,
+        syllables: normalizeStringArray(data.syllables),
+        examples: normalizeStringArray(data.examples),
+        followUp: data.followUp
+    };
+};
+
+export interface ExampleItem {
+    native: string;
+    romanized: string;
+    english: string;
+}
+
+export const generateExampleWords = async (letter: string, lang: LanguageCode, outputLang: 'en' | 'np', count: number = 5): Promise<ExampleItem[]> => {
+    const langName = getLangName(lang);
+    const responseLang = outputLang === 'np' ? 'Nepali (Devanagari)' : 'English';
+    const prompt = `Create ${count} kid-friendly example words in ${langName} that start with the letter '${letter}'. Return JSON: {"items":[{"native":"","romanized":"","english":""}]}. Also keep explanations in ${responseLang}.`;
+    const data = await generateJsonWithCache<{ items: ExampleItem[] }>(
+        `examples_${lang}_${outputLang}_${letter}_${count}`,
+        prompt,
+        {
+            type: Type.OBJECT,
+            properties: {
+                items: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            native: { type: Type.STRING },
+                            romanized: { type: Type.STRING },
+                            english: { type: Type.STRING }
+                        },
+                        required: ["native", "romanized", "english"]
+                    }
+                }
+            },
+            required: ["items"]
+        },
+        86400
+    );
+    return Array.isArray(data.items) ? data.items : [];
+};
+
+export interface SentenceItem {
+    native: string;
+    romanized: string;
+    english: string;
+}
+
+export const generateExampleSentences = async (word: string, lang: LanguageCode, outputLang: 'en' | 'np', count: number = 3): Promise<SentenceItem[]> => {
+    const langName = getLangName(lang);
+    const responseLang = outputLang === 'np' ? 'Nepali (Devanagari)' : 'English';
+    const prompt = `Create ${count} short, kid-friendly sentences in ${langName} using the word '${word}'. Return JSON: {"items":[{"native":"","romanized":"","english":""}]}. Keep explanations in ${responseLang}.`;
+    const data = await generateJsonWithCache<{ items: SentenceItem[] }>(
+        `sentences_${lang}_${outputLang}_${word}_${count}`,
+        prompt,
+        {
+            type: Type.OBJECT,
+            properties: {
+                items: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            native: { type: Type.STRING },
+                            romanized: { type: Type.STRING },
+                            english: { type: Type.STRING }
+                        },
+                        required: ["native", "romanized", "english"]
+                    }
+                }
+            },
+            required: ["items"]
+        },
+        86400
+    );
+    return Array.isArray(data.items) ? data.items : [];
+};
+
+export interface StoryResult {
+    story: string;
+    title?: string;
+}
+
+export const generateSimpleStory = async (words: string[], lang: LanguageCode, outputLang: 'en' | 'np'): Promise<StoryResult> => {
+    const langName = getLangName(lang);
+    const responseLang = outputLang === 'np' ? 'Nepali (Devanagari)' : 'English';
+    const prompt = `Write a 4-5 sentence, kid-friendly story in ${langName} using these words: ${words.join(', ')}. Respond in ${responseLang}. Return JSON: {"title":"","story":""}.`;
+    const data = await generateJsonWithCache<StoryResult>(
+        `story_${lang}_${outputLang}_${words.join('_')}`,
+        prompt,
+        {
+            type: Type.OBJECT,
+            properties: {
+                title: { type: Type.STRING },
+                story: { type: Type.STRING }
+            },
+            required: ["story"]
+        },
+        86400
+    );
+    return data;
+};
+
+export interface CultureExplainResult {
+    text: string;
+}
+
+export const generateCultureExplanation = async (topic: string, lang: LanguageCode, outputLang: 'en' | 'np'): Promise<CultureExplainResult> => {
+    const responseLang = outputLang === 'np' ? 'Nepali (Devanagari)' : 'English';
+    const prompt = `Explain ${topic} in simple, kid-friendly language about Nepal. Respond in ${responseLang}. Return JSON: {"text":""}.`;
+    const data = await generateJsonWithCache<CultureExplainResult>(
+        `culture_${lang}_${outputLang}_${topic}`,
+        prompt,
+        {
+            type: Type.OBJECT,
+            properties: { text: { type: Type.STRING } },
+            required: ["text"]
+        },
+        86400
+    );
+    return data;
+};
+
+export interface TraceStepResult {
+    char: string;
+    steps: { step: number; instruction: string }[];
+    tip?: string;
+}
+
+export const generateTracingSteps = async (char: string, lang: LanguageCode, outputLang: 'en' | 'np'): Promise<TraceStepResult> => {
+    const langName = getLangName(lang);
+    const responseLang = outputLang === 'np' ? 'Nepali (Devanagari)' : 'English';
+    const prompt = `Give step-by-step writing guidance for '${char}' in ${langName}. Respond in ${responseLang}. Return JSON: {"char":"","steps":[{"step":1,"instruction":""}],"tip":""}.`;
+    const data = await generateJsonWithCache<TraceStepResult>(
+        `trace_steps_${lang}_${outputLang}_${char}`,
+        prompt,
+        {
+            type: Type.OBJECT,
+            properties: {
+                char: { type: Type.STRING },
+                steps: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            step: { type: Type.NUMBER },
+                            instruction: { type: Type.STRING }
+                        },
+                        required: ["step", "instruction"]
+                    }
+                },
+                tip: { type: Type.STRING }
+            },
+            required: ["char", "steps"]
+        },
+        86400
+    );
+    return data;
+};
+
+export interface QuizItem {
+    questionNative: string;
+    questionEn: string;
+    optionsNative: string[];
+    optionsEn: string[];
+    correctIndex: number;
+    factNative: string;
+    factEn: string;
+}
+
+export const generateQuizQuestions = async (lang: LanguageCode, count: number = 5): Promise<QuizItem[]> => {
+    const prompt = `Create ${count} kid-friendly trivia questions about Nepal. Return JSON: {"questions":[{"questionNative":"","questionEn":"","optionsNative":[""],"optionsEn":[""],"correctIndex":0,"factNative":"","factEn":""}]}.`;
+    const data = await generateJsonWithCache<{ questions: QuizItem[] }>(
+        `quiz_${lang}_${count}`,
+        prompt,
+        {
+            type: Type.OBJECT,
+            properties: {
+                questions: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            questionNative: { type: Type.STRING },
+                            questionEn: { type: Type.STRING },
+                            optionsNative: { type: Type.ARRAY, items: { type: Type.STRING } },
+                            optionsEn: { type: Type.ARRAY, items: { type: Type.STRING } },
+                            correctIndex: { type: Type.NUMBER },
+                            factNative: { type: Type.STRING },
+                            factEn: { type: Type.STRING }
+                        },
+                        required: ["questionNative", "questionEn", "optionsNative", "optionsEn", "correctIndex", "factNative", "factEn"]
+                    }
+                }
+            },
+            required: ["questions"]
+        },
+        86400
+    );
+    return Array.isArray(data.questions) ? data.questions : [];
+};
+
+export interface ScrambleItem {
+    scrambled: string;
+    answer: string;
+    english: string;
+    hint: string;
+    hintEn: string;
+}
+
+export const generateWordScrambles = async (lang: LanguageCode, count: number = 5): Promise<ScrambleItem[]> => {
+    const langName = getLangName(lang);
+    const prompt = `Create ${count} kid-friendly word scramble items in ${langName}. Return JSON: {"items":[{"scrambled":"","answer":"","english":"","hint":"","hintEn":""}]}. Keep answers in ${langName}.`;
+    const data = await generateJsonWithCache<{ items: ScrambleItem[] }>(
+        `scramble_${lang}_${count}`,
+        prompt,
+        {
+            type: Type.OBJECT,
+            properties: {
+                items: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            scrambled: { type: Type.STRING },
+                            answer: { type: Type.STRING },
+                            english: { type: Type.STRING },
+                            hint: { type: Type.STRING },
+                            hintEn: { type: Type.STRING }
+                        },
+                        required: ["scrambled", "answer", "english", "hint", "hintEn"]
+                    }
+                }
+            },
+            required: ["items"]
+        },
+        86400
+    );
+    return Array.isArray(data.items) ? data.items : [];
+};
+
+export interface PronunciationHintResult {
+    romanized: string;
+    syllables: string[];
+    hint: string;
+}
+
+export const generatePronunciationHints = async (text: string, lang: LanguageCode, outputLang: 'en' | 'np'): Promise<PronunciationHintResult> => {
+    const responseLang = outputLang === 'np' ? 'Nepali (Devanagari)' : 'English';
+    const prompt = `Give pronunciation hints for '${text}'. Respond in ${responseLang}. Return JSON: {"romanized":"","syllables":[""],"hint":""}.`;
+    const data = await generateJsonWithCache<PronunciationHintResult>(
+        `pronounce_${lang}_${outputLang}_${text}`,
+        prompt,
+        {
+            type: Type.OBJECT,
+            properties: {
+                romanized: { type: Type.STRING },
+                syllables: { type: Type.ARRAY, items: { type: Type.STRING } },
+                hint: { type: Type.STRING }
+            },
+            required: ["romanized", "syllables", "hint"]
+        },
+        86400
+    );
+    return {
+        romanized: data.romanized || '',
+        syllables: normalizeStringArray(data.syllables),
+        hint: data.hint || ''
+    };
+};
+
+export const evaluateSpeechPronunciation = async (
+    base64Audio: string,
+    text: string,
+    english: string
+): Promise<{ score: number; comment: string }> => {
+    const prompt = `A child is learning Nepali. They said "${text}" (${english}). Rate their pronunciation 1-100 and provide a tiny encouraging 3-word comment. JSON: {"score": number, "comment": string}`;
+    const response = await generateContentWithRetry({
+        model: DEFAULT_TEXT_MODEL,
+        contents: [
+            {
+                parts: [
+                    { inlineData: { mimeType: 'audio/webm', data: base64Audio } },
+                    { text: prompt }
+                ]
+            }
+        ],
+        config: { responseMimeType: "application/json" }
+    });
+
+    const parsed = extractJSON(response.text || '{}') || {};
+    const rawScore = Number(parsed.score);
+    return {
+        score: Number.isFinite(rawScore) ? rawScore : 85,
+        comment: typeof parsed.comment === 'string' ? parsed.comment : 'Good job!'
+    };
+};
+
 const normalizeSoundPath = (path?: string | null) => {
     if (!path) return path || '';
     return path.replace(/^\/assets\/voice\//, '/assets/voices/');
 };
 
 export const fetchAlphabet = async (lang: LanguageCode): Promise<LetterData[]> => {
-    const alphabet = STATIC_ALPHABET[lang] || [];
+    const remote = await fetchContentJson<LetterData[]>(`/content/${lang}/alphabet.json`, `content_${lang}_alphabet`);
+    const alphabet = remote || STATIC_ALPHABET[lang] || [];
     return alphabet.map(letter => ({
         ...letter,
         letterNepaliAudio: normalizeSoundPath(letter.letterNepaliAudio),
@@ -811,11 +1322,28 @@ export const fetchAlphabet = async (lang: LanguageCode): Promise<LetterData[]> =
 };
 
 export const fetchNumbers = async (lang: LanguageCode): Promise<NumberData[]> => {
-    return STATIC_NUMBERS[lang] || [];
+    const remote = await fetchContentJson<NumberData[]>(`/content/${lang}/numbers.json`, `content_${lang}_numbers`);
+    return remote || STATIC_NUMBERS[lang] || [];
 };
 
 export const fetchVocabulary = async (lang: LanguageCode): Promise<VocabularyCategory[]> => {
-    return STATIC_VOCABULARY[lang] || [];
+    const remote = await fetchContentJson<VocabularyCategory[]>(`/content/${lang}/vocabulary.json`, `content_${lang}_vocabulary`);
+    return remote || STATIC_VOCABULARY[lang] || [];
+};
+
+export interface QuizContentItem {
+    id: number;
+    question: string;
+    questionEn: string;
+    options: string[];
+    optionsEn: string[];
+    correctAnswer: number;
+    fact: string;
+    factEn: string;
+}
+
+export const fetchQuizContent = async (lang: LanguageCode): Promise<QuizContentItem[] | null> => {
+    return await fetchContentJson<QuizContentItem[]>(`/content/${lang}/quiz.json`, `content_${lang}_quiz`);
 };
 
 export const translatePhrase = async (
@@ -829,7 +1357,7 @@ export const translatePhrase = async (
             : `Translate "${text}" from ${getLangName(lang)} to English for a child. Return JSON with native (original ${getLangName(lang)} phrase), transliteration (romanized), english (in English), and category.`;
 
         const response = await generateContentWithRetry({
-            model: "gemini-3-flash-preview",
+            model: DEFAULT_TEXT_MODEL,
             contents: prompt,
             config: {
                 responseMimeType: "application/json",
@@ -861,7 +1389,7 @@ export const askKidAssistant = async (message: string, lang: LanguageCode): Prom
     if (!message.trim()) return '';
     try {
         const response = await generateContentWithRetry({
-            model: "gemini-3-flash-preview",
+            model: DEFAULT_TEXT_MODEL,
             contents: `You are a cheerful Nepali assistant for kids. Respond in simple Nepali, short sentences, and be friendly. Answer: "${message}"`,
             config: {
                 responseMimeType: "text/plain"
@@ -876,7 +1404,7 @@ export const askKidAssistant = async (message: string, lang: LanguageCode): Prom
 export const validateHandwriting = async (base64: string, char: string, lang: LanguageCode): Promise<boolean> => {
     try {
         const response = await generateContentWithRetry({
-            model: "gemini-3-flash-preview",
+            model: DEFAULT_TEXT_MODEL,
             contents: { parts: [{ inlineData: { mimeType: "image/png", data: base64 } }, { text: `Is this '${char}' in ${getLangName(lang)}? JSON: {"isCorrect": boolean}` }] },
             config: { responseMimeType: "application/json" }
         });

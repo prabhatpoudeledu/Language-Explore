@@ -15,7 +15,7 @@ export const VocabularySection: React.FC<Props> = ({ language, userProfile, show
   const [selectedItem, setSelectedItem] = useState<VocabularyItem | null>(null);
   const [imageError, setImageError] = useState(false);
   const [loading, setLoading] = useState(true);
-  const voiceId = resolveVoiceId(userProfile);
+  const voiceId = resolveVoiceId();
   const colorMap: Record<string, string> = {
     red: '#ef4444',
     orange: '#f97316',
