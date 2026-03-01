@@ -502,11 +502,10 @@ export const PuzzleSection: React.FC<Props> = ({ language, userProfile, showTran
                                     ) : (
                                         <span className="text-3xl font-black">✦</span>
                                     )}
-                                <button
-                                    onClick={refreshQuiz}
-                                    disabled={isAiBusy}
-                                    className={`w-full md:w-auto px-6 py-3 rounded-2xl bg-indigo-500 text-white font-black text-sm shadow-lg transition active:scale-95 ${isAiBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                >
+                                </button>
+                            ))}
+                        </div>
+
                         {memoryMatches === totalPairs && (
                             <div className="text-center bg-emerald-50 border border-emerald-200 rounded-3xl p-6 shadow-lg">
                                 <div className="text-3xl font-black text-emerald-600">🎉 Explorer Master!</div>
@@ -532,12 +531,8 @@ export const PuzzleSection: React.FC<Props> = ({ language, userProfile, showTran
                                 className="px-6 py-3 rounded-2xl bg-blue-50 text-blue-700 font-bold shadow-sm hover:bg-blue-100 disabled:opacity-50"
                             >
                                 {quizLoading ? 'Generating...' : '✨ Generate New Quiz'}
-                            <button
-                                onClick={refreshScrambles}
-                                disabled={isAiBusy}
-                                className={`w-full md:w-auto px-6 py-3 rounded-2xl bg-purple-500 text-white font-black text-sm shadow-lg transition active:scale-95 ${isAiBusy ? 'opacity-60 cursor-not-allowed' : ''}`}
-                            >
-                        )}
+                            </button>
+                        </div>
 
                         <div className="bg-white p-8 rounded-3xl shadow-xl border-2 border-blue-100">
                             <div className="text-center mb-6">
